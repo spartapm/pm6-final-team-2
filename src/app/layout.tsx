@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ALLBLU",
-  description: "애니와 웹툰을 다시 보고 싶은 순간에 모아보는 MVP",
+  description: "본 작품, 볼 작품, 다시 보고 싶은 작품을 모아두는 애니·웹툰 아카이브",
 };
 
 export const viewport: Viewport = {
@@ -26,7 +26,7 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <div className="app-shell mx-auto min-h-[100svh] max-w-[1180px] bg-white shadow-panel">
+        <div className="app-shell mx-auto min-h-[100svh] max-w-[1200px] bg-white shadow-panel">
           {children}
         </div>
       </body>

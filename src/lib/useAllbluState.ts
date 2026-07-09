@@ -1,24 +1,58 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { defaultState, loadState } from "./store";
+import { useCallback, useEffect, useState } from "react";
+import { getSessionUser } from "./auth";
+import { loadAppSnapshot } from "./db";
+import { supabase, supabaseConfigured } from "./supabase";
 import type { AppState } from "./types";
 
+const emptyState: AppState = {
+  users: [],
+  currentUserId: undefined,
+  workStatuses: {},
+  workStatusUpdatedAt: {},
+  reviews: [],
+  picks: [],
+};
+
 export function useAllbluState() {
-  const [state, setState] = useState<AppState>(defaultState);
+  const [state, setState] = useState<AppState>(emptyState);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    const sync = () => setState(loadState());
-    sync();
-    setReady(true);
-    window.addEventListener("storage", sync);
-    window.addEventListener("allblu-state-change", sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("allblu-state-change", sync);
-    };
+  const refresh = useCallback(async () => {
+    if (!supabaseConfigured) {
+      setState(emptyState);
+      setReady(true);
+      return;
+    }
+    try {
+      const user = await getSessionUser();
+      const snapshot = await loadAppSnapshot(user);
+      setState(snapshot);
+    } catch (error) {
+      console.error("Failed to load ALLBLU state", error);
+    } finally {
+      setReady(true);
+    }
   }, []);
 
-  return { state, ready };
+  useEffect(() => {
+    void refresh();
+
+    const onChange = () => {
+      void refresh();
+    };
+    window.addEventListener("allblu-state-change", onChange);
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      void refresh();
+    });
+
+    return () => {
+      window.removeEventListener("allblu-state-change", onChange);
+      sub.subscription.unsubscribe();
+    };
+  }, [refresh]);
+
+  return { state, ready, refresh };
 }

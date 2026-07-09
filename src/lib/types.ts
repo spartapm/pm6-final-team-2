@@ -27,8 +27,10 @@ export type Work = {
 
 export type User = {
   id: string;
+  email: string;
   nickname: string;
-  password: string;
+  bio?: string;
+  badge?: string;
 };
 
 export type Review = {
@@ -60,10 +62,12 @@ export type Ollpick = {
   createdAt: string;
 };
 
+/** Client app snapshot loaded from Supabase */
 export type AppState = {
   users: User[];
   currentUserId?: string;
   workStatuses: Record<string, Record<string, WorkStatus>>;
+  workStatusUpdatedAt: Record<string, Record<string, string>>;
   reviews: Review[];
   picks: Ollpick[];
 };

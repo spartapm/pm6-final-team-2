@@ -1,44 +1,59 @@
-import Link from "next/link";
-import { getWork } from "@/lib/works";
-import type { Ollpick } from "@/lib/types";
+"use client";
 
-export default function PickCard({ pick }: { pick: Ollpick }) {
+import Link from "next/link";
+import WorkThumbnail from "./WorkThumbnail";
+import { getWork } from "@/lib/works";
+import type { Ollpick, WorkStatus } from "@/lib/types";
+
+export default function PickCard({
+  pick,
+  userId,
+  statuses = {},
+}: {
+  pick: Ollpick;
+  userId?: string;
+  statuses?: Record<string, WorkStatus>;
+}) {
   const base = getWork(pick.baseWorkId);
   const recommended = getWork(pick.recommendedWorkId);
   if (!base || !recommended) return null;
 
   return (
-    <article className="rounded-2xl border border-line bg-white p-4 shadow-sm">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3">
-        <MiniWork id={base.id} title={base.title} tone={base.coverTone} label="좋아하신다면" />
-        <div className="pt-12 text-xl font-black text-navy">→</div>
-        <MiniWork id={recommended.id} title={recommended.title} tone={recommended.coverTone} label="추천해요" />
+    <article className="min-w-0 rounded-2xl border border-line bg-white p-4 transition hover:shadow-card">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <WorkThumbnail
+            work={base}
+            userId={userId}
+            status={statuses[base.id]}
+            compact
+          />
+          <p className="mt-1 text-center text-[11px] font-bold text-muted">좋아하신다면</p>
+        </div>
+        <div>
+          <WorkThumbnail
+            work={recommended}
+            userId={userId}
+            status={statuses[recommended.id]}
+            compact
+          />
+          <p className="mt-1 text-center text-[11px] font-bold text-muted">추천해요</p>
+        </div>
       </div>
-      <div className="mt-4 rounded-xl bg-blueSoft p-3 text-sm">
-        <p className="font-bold">최초 추천자 {pick.firstRecommender}</p>
-        <p className="mt-1 text-muted">동의 {pick.agreeUserIds.length}명</p>
-        <p className="mt-3 line-clamp-2">{pick.reasons[0]?.content}</p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Link
+          href={`/ollpick/${pick.baseWorkId}`}
+          className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-muted hover:text-brand"
+        >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand text-[9px] text-white">
+            {pick.firstRecommender.slice(0, 1)}
+          </span>
+          <span className="line-clamp-1">{pick.firstRecommender} 님이 추가함</span>
+        </Link>
+        <span className="shrink-0 text-xs font-bold text-brand">
+          💙 {pick.agreeUserIds.length || 1}
+        </span>
       </div>
     </article>
-  );
-}
-
-function MiniWork({
-  id,
-  title,
-  tone,
-  label,
-}: {
-  id: string;
-  title: string;
-  tone: string;
-  label: string;
-}) {
-  return (
-    <Link href={`/works/${id}`} className="block">
-      <div className={`thumbnail-ratio rounded-xl bg-gradient-to-br ${tone}`} />
-      <p className="mt-2 text-xs text-muted">{label}</p>
-      <h3 className="line-clamp-2 text-sm font-black">{title}</h3>
-    </Link>
   );
 }
