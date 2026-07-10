@@ -5,8 +5,13 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
-const csvPath = path.join(root, "data", "Allblu_media_content_database.csv");
 const outPath = path.join(root, "src", "lib", "works.data.json");
+const cacheCsvPath = path.join(root, "data", "Allblu_media_content_database.csv");
+
+/** Google Sheet: Allblu_media_content_database */
+const SHEET_ID = "1ZrLSqkNDWugAl2iLuAnQzihYjSg2wXOEzuxDWkyy4yQ";
+const SHEET_GID = "119065602";
+const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
 const tones = [
   "from-[#d7dde8] to-[#b8c2d4]",
@@ -70,7 +75,25 @@ function parseCsv(text) {
   return rows;
 }
 
-const raw = fs.readFileSync(csvPath, "utf8").replace(/^\uFEFF/, "");
+async function loadCsvText() {
+  console.log(`Fetching Google Sheet…\n  ${SHEET_CSV_URL}`);
+  const res = await fetch(SHEET_CSV_URL, { redirect: "follow" });
+  if (!res.ok) {
+    throw new Error(`Sheet export failed: HTTP ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text.includes("content_id") || text.includes("<!DOCTYPE html")) {
+    throw new Error(
+      "Sheet export did not return CSV. Make sure the sheet is shared as “Anyone with the link can view”."
+    );
+  }
+  fs.mkdirSync(path.dirname(cacheCsvPath), { recursive: true });
+  fs.writeFileSync(cacheCsvPath, text, "utf8");
+  console.log(`Cached CSV → ${cacheCsvPath}`);
+  return text;
+}
+
+const raw = (await loadCsvText()).replace(/^\uFEFF/, "");
 const table = parseCsv(raw);
 const headers = table[0];
 const works = [];
@@ -109,4 +132,6 @@ for (let r = 1; r < table.length; r += 1) {
 }
 
 fs.writeFileSync(outPath, JSON.stringify(works), "utf8");
-console.log(`Wrote ${works.length} works → ${outPath}`);
+const anime = works.filter((w) => w.type === "anime").length;
+const webtoon = works.filter((w) => w.type === "webtoon").length;
+console.log(`Wrote ${works.length} works (${anime} anime / ${webtoon} webtoon) → ${outPath}`);

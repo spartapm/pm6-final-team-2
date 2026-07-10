@@ -13,7 +13,7 @@ export const statusOptions: {
   { code: "CANCEL", label: "취소", icon: "❌" },
 ];
 
-/** Allblu media CSV 기반 작품 목록 (Supabase works 테이블 없음) */
+/** Google Sheet → works.data.json (Supabase works 테이블 없음). 갱신: npm run generate:works */
 export const works: Work[] = worksData as Work[];
 
 const workMap = new Map(works.map((work) => [work.id, work]));
