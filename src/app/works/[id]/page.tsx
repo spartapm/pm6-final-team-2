@@ -144,10 +144,9 @@ export default function WorkDetailPage() {
             <h1 className="text-[28px] font-black tracking-tight md:text-[34px]">{work.title}</h1>
             <p className="mt-2 text-sm font-bold text-muted">
               {work.type === "anime" ? "애니" : "웹툰"} · {work.statusLabel}
+              {work.ageRating ? ` · ${work.ageRating}` : ""}
+              {work.serialDays?.length ? ` · ${work.serialDays.join("/")}` : ""}
               {work.genres.length ? ` · ${work.genres.join("/")}` : ""}
-              {work.meta.original && work.meta.original !== work.title
-                ? ` · ${work.meta.original}`
-                : ""}
             </p>
 
             <div className="mt-4 flex flex-wrap items-end gap-3">
@@ -218,25 +217,44 @@ export default function WorkDetailPage() {
 
             <section>
               <h2 className="mb-3 text-base font-black">[해당 작품을 볼 수 있는 곳]</h2>
-              {work.platform.length ? (
+              {(work.platforms?.length ?? work.platform.length) ? (
                 <div className="flex flex-wrap gap-2">
-                  {work.platform.map((platform) => (
-                    <a
-                      key={platform}
-                      href="#"
-                      className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-2 text-sm font-bold hover:bg-surface"
-                    >
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[10px] text-white">
-                        {platform.slice(0, 1)}
+                  {(
+                    work.platforms?.length
+                      ? work.platforms
+                      : work.platform.map((name) => ({ name, url: undefined }))
+                  ).map((platform) => {
+                    const label = platform.name;
+                    const href = platform.url;
+                    const className =
+                      "inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-2 text-sm font-bold hover:bg-surface";
+                    const inner = (
+                      <>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[10px] text-white">
+                          {label.slice(0, 1)}
+                        </span>
+                        {label}
+                      </>
+                    );
+                    return href ? (
+                      <a
+                        key={`${label}-${href}`}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={className}
+                      >
+                        {inner}
+                      </a>
+                    ) : (
+                      <span key={label} className={className}>
+                        {inner}
                       </span>
-                      {platform}
-                    </a>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-sm text-muted">
-                  감상 플랫폼 정보는 추후 연동 예정입니다.
-                </p>
+                <p className="text-sm text-muted">등록된 시청 URL이 없습니다.</p>
               )}
             </section>
 
@@ -467,11 +485,57 @@ export default function WorkDetailPage() {
                 label="원제"
                 value={work.meta.original || work.title}
               />
-              <MetaRow label="콘텐츠 ID" value={work.id} />
               <MetaRow
                 label={work.type === "anime" ? "방영상태" : "연재상태"}
                 value={work.statusLabel}
               />
+              {work.ageRating ? (
+                <MetaRow label="이용등급" value={work.ageRating} />
+              ) : null}
+              {work.meta.episodes ? (
+                <MetaRow label="화수" value={work.meta.episodes} />
+              ) : null}
+              {work.meta.period ? (
+                <MetaRow label="기간" value={work.meta.period} />
+              ) : null}
+              {work.serialDays?.length ? (
+                <MetaRow label="연재요일" value={work.serialDays.join(", ")} />
+              ) : null}
+              {(work.meta.studios?.length || work.meta.studio) ? (
+                <MetaRow
+                  label="제작사"
+                  value={(work.meta.studios ?? [work.meta.studio!]).join(", ")}
+                />
+              ) : null}
+              {(work.meta.directors?.length || work.meta.director) ? (
+                <MetaRow
+                  label="감독"
+                  value={(work.meta.directors ?? [work.meta.director!]).join(", ")}
+                />
+              ) : null}
+              {(work.meta.writers?.length || work.meta.writer) ? (
+                <MetaRow
+                  label="글"
+                  value={(work.meta.writers ?? [work.meta.writer!]).join(", ")}
+                />
+              ) : null}
+              {(work.meta.illustrators?.length || work.meta.illustrator) ? (
+                <MetaRow
+                  label="그림"
+                  value={
+                    (work.meta.illustrators ?? [work.meta.illustrator!]).join(", ")
+                  }
+                />
+              ) : null}
+              {work.genres.length ? (
+                <MetaRow label="장르" value={work.genres.join(", ")} />
+              ) : null}
+              {work.tags?.length ? (
+                <MetaRow
+                  label="태그"
+                  value={work.tags.slice(0, 8).join(", ")}
+                />
+              ) : null}
             </div>
           </aside>
         </section>

@@ -6,12 +6,26 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, "..");
 const outPath = path.join(root, "src", "lib", "works.data.json");
-const cacheCsvPath = path.join(root, "data", "Allblu_media_content_database.csv");
+const cacheDir = path.join(root, "data");
 
-/** Google Sheet: Allblu_media_content_database */
 const SHEET_ID = "1ZrLSqkNDWugAl2iLuAnQzihYjSg2wXOEzuxDWkyy4yQ";
-const SHEET_GID = "119065602";
-const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
+/** Tab gid map — Allblu_media_content_database */
+const SHEETS = {
+  works: "119065602",
+  schedule: "1057632304",
+  serialDays: "479874657",
+  ageRating: "1291272614",
+  watchUrls: "747187607",
+  staff: "663440471",
+  workStaff: "1638760805",
+  genres: "315950594",
+  workGenres: "1763194831",
+  tags: "289477746",
+  workTags: "716750570",
+  companies: "1155496548",
+  workCompanies: "417395056",
+};
 
 const tones = [
   "from-[#d7dde8] to-[#b8c2d4]",
@@ -75,58 +89,203 @@ function parseCsv(text) {
   return rows;
 }
 
-async function loadCsvText() {
-  console.log(`Fetching Google Sheet…\n  ${SHEET_CSV_URL}`);
-  const res = await fetch(SHEET_CSV_URL, { redirect: "follow" });
-  if (!res.ok) {
-    throw new Error(`Sheet export failed: HTTP ${res.status}`);
+function rowsToObjects(text) {
+  const table = parseCsv(text.replace(/^\uFEFF/, ""));
+  if (!table.length) return [];
+  const headers = table[0].map((h) => h.trim());
+  const out = [];
+  for (let r = 1; r < table.length; r += 1) {
+    const cells = table[r];
+    if (!cells || !cells.some((c) => String(c ?? "").trim())) continue;
+    const obj = {};
+    headers.forEach((h, idx) => {
+      obj[h] = (cells[idx] ?? "").trim();
+    });
+    out.push(obj);
   }
-  const text = await res.text();
-  if (!text.includes("content_id") || text.includes("<!DOCTYPE html")) {
-    throw new Error(
-      "Sheet export did not return CSV. Make sure the sheet is shared as “Anyone with the link can view”."
-    );
-  }
-  fs.mkdirSync(path.dirname(cacheCsvPath), { recursive: true });
-  fs.writeFileSync(cacheCsvPath, text, "utf8");
-  console.log(`Cached CSV → ${cacheCsvPath}`);
-  return text;
+  return out;
 }
 
-const raw = (await loadCsvText()).replace(/^\uFEFF/, "");
-const table = parseCsv(raw);
-const headers = table[0];
+async function fetchSheet(name, gid) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${gid}`;
+  console.log(`  · ${name}`);
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`${name} export failed: HTTP ${res.status}`);
+  const text = await res.text();
+  if (!text || text.includes("<!DOCTYPE html")) {
+    throw new Error(
+      `${name}: not CSV. Share the spreadsheet as “Anyone with the link can view”.`
+    );
+  }
+  fs.mkdirSync(cacheDir, { recursive: true });
+  fs.writeFileSync(path.join(cacheDir, `${name}.csv`), text, "utf8");
+  return rowsToObjects(text);
+}
+
+function groupBy(rows, key) {
+  const map = new Map();
+  for (const row of rows) {
+    const id = row[key];
+    if (!id) continue;
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push(row);
+  }
+  return map;
+}
+
+function formatPeriod(start, end) {
+  if (!start && !end) return "";
+  if (start && end) return `${start} ~ ${end}`;
+  if (start) return `${start} ~`;
+  return `~ ${end}`;
+}
+
+console.log("Fetching Google Sheets…");
+const [
+  workRows,
+  scheduleRows,
+  serialDayRows,
+  ageRows,
+  watchRows,
+  staffRows,
+  workStaffRows,
+  genreRows,
+  workGenreRows,
+  tagRows,
+  workTagRows,
+  companyRows,
+  workCompanyRows,
+] = await Promise.all([
+  fetchSheet("works", SHEETS.works),
+  fetchSheet("schedule", SHEETS.schedule),
+  fetchSheet("serialDays", SHEETS.serialDays),
+  fetchSheet("ageRating", SHEETS.ageRating),
+  fetchSheet("watchUrls", SHEETS.watchUrls),
+  fetchSheet("staff", SHEETS.staff),
+  fetchSheet("workStaff", SHEETS.workStaff),
+  fetchSheet("genres", SHEETS.genres),
+  fetchSheet("workGenres", SHEETS.workGenres),
+  fetchSheet("tags", SHEETS.tags),
+  fetchSheet("workTags", SHEETS.workTags),
+  fetchSheet("companies", SHEETS.companies),
+  fetchSheet("workCompanies", SHEETS.workCompanies),
+]);
+
+const staffById = new Map(staffRows.map((r) => [r.staff_id, r.staff_name]));
+const genreById = new Map(genreRows.map((r) => [r.genre_id, r.genre_name_ko]));
+const tagById = new Map(tagRows.map((r) => [r.tag_id, r.tag_name_ko]));
+const companyById = new Map(companyRows.map((r) => [r.company_id, r.company_name]));
+
+const scheduleBy = new Map(scheduleRows.map((r) => [r.content_id, r]));
+const ageBy = groupBy(ageRows, "content_id");
+const serialBy = groupBy(serialDayRows, "content_id");
+const watchBy = groupBy(watchRows, "content_id");
+const staffLinkBy = groupBy(workStaffRows, "content_id");
+const genreLinkBy = groupBy(workGenreRows, "content_id");
+const tagLinkBy = groupBy(workTagRows, "content_id");
+const companyLinkBy = groupBy(workCompanyRows, "content_id");
+
 const works = [];
 
-for (let r = 1; r < table.length; r += 1) {
-  const cells = table[r];
-  if (!cells || !cells.length) continue;
-  const obj = Object.fromEntries(headers.map((h, idx) => [h, cells[idx] ?? ""]));
-  const cid = (obj.content_id || "").trim();
+for (let i = 0; i < workRows.length; i += 1) {
+  const row = workRows[i];
+  const cid = row.content_id;
   if (!cid) continue;
-  const title = (obj.title || "").trim() || cid;
-  const summary = (obj.summary || "").trim();
-  const thumb = (obj.thumbnail_url || "").trim() || undefined;
-  const wtype = (obj.content_type || "").trim() === "웹툰" ? "webtoon" : "anime";
-  const status = (obj.status || "").trim() || "미정";
-  const original = (obj.original_title || "").trim() || undefined;
+
+  const title = row.title || cid;
+  const summary = row.summary || "";
+  const thumb = row.thumbnail_url || undefined;
+  const wtype = row.content_type === "웹툰" ? "webtoon" : "anime";
+  const status = row.status || "미정";
+  const original = row.original_title || undefined;
+
+  const genres = (genreLinkBy.get(cid) ?? [])
+    .map((link) => genreById.get(link.genre_id))
+    .filter(Boolean);
+  const uniqueGenres = [...new Set(genres)];
+
+  const tags = (tagLinkBy.get(cid) ?? [])
+    .map((link) => tagById.get(link.tag_id))
+    .filter(Boolean);
+  const uniqueTags = [...new Set(tags)];
+
+  const platforms = [];
+  const seenPlatform = new Set();
+  for (const link of watchBy.get(cid) ?? []) {
+    const name = link.platform;
+    if (!name || seenPlatform.has(name)) continue;
+    seenPlatform.add(name);
+    platforms.push({
+      name,
+      url: link.watch_url || undefined,
+      offerType: link.offer_type || undefined,
+    });
+  }
+
+  const staffLinks = staffLinkBy.get(cid) ?? [];
+  const directors = [];
+  const writers = [];
+  const illustrators = [];
+  const otherStaff = [];
+  for (const link of staffLinks) {
+    const name = staffById.get(link.staff_id);
+    if (!name) continue;
+    const role = link.role || "";
+    if (role.includes("감독")) directors.push(name);
+    else if (role.includes("글") || role.includes("원작") || role.includes("각본")) writers.push(name);
+    else if (role.includes("그림") || role.includes("작화")) illustrators.push(name);
+    else otherStaff.push(`${name}${role ? `(${role})` : ""}`);
+  }
+
+  const companies = (companyLinkBy.get(cid) ?? [])
+    .map((link) => companyById.get(link.company_id))
+    .filter(Boolean);
+  const uniqueCompanies = [...new Set(companies)];
+
+  const schedule = scheduleBy.get(cid);
+  const episodes = schedule?.total_count
+    ? `${schedule.total_count}화`
+    : "";
+  const period = formatPeriod(schedule?.start_date, schedule?.end_date);
+
+  const serialDays = [...new Set((serialBy.get(cid) ?? []).map((r) => r.day_name).filter(Boolean))];
+
+  const ageKr = (ageBy.get(cid) ?? []).find((r) => r.country_code === "KR")
+    ?? (ageBy.get(cid) ?? [])[0];
+  const ageRating = ageKr?.rating || undefined;
+
   const h = parseInt(crypto.createHash("md5").update(cid).digest("hex").slice(0, 8), 16);
+
   works.push({
     id: cid,
     title,
     type: wtype,
     thumbnailUrl: thumb,
-    coverTone: tones[(r - 1) % tones.length],
+    coverTone: tones[i % tones.length],
     rating: Math.round((3.5 + (h % 15) / 10) * 10) / 10,
     ratingCount: 200 + (h % 5000),
-    genres: [],
+    genres: uniqueGenres,
+    tags: uniqueTags,
     overview: summary || `${title}에 대한 정보가 준비 중입니다.`,
-    platform: [],
+    platforms,
+    /** @deprecated use platforms — kept for older UI that expects string[] */
+    platform: platforms.map((p) => p.name),
     statusLabel: status,
+    ageRating,
+    serialDays,
     meta: {
       original,
-      episodes: "",
-      period: "",
+      studio: uniqueCompanies[0] || undefined,
+      studios: uniqueCompanies,
+      director: directors[0] || undefined,
+      directors,
+      writer: writers[0] || undefined,
+      writers,
+      illustrator: illustrators[0] || undefined,
+      illustrators,
+      episodes,
+      period,
+      staffExtra: otherStaff.slice(0, 5),
     },
   });
 }
@@ -134,4 +293,9 @@ for (let r = 1; r < table.length; r += 1) {
 fs.writeFileSync(outPath, JSON.stringify(works), "utf8");
 const anime = works.filter((w) => w.type === "anime").length;
 const webtoon = works.filter((w) => w.type === "webtoon").length;
-console.log(`Wrote ${works.length} works (${anime} anime / ${webtoon} webtoon) → ${outPath}`);
+const withGenre = works.filter((w) => w.genres.length).length;
+const withPlatform = works.filter((w) => w.platforms.length).length;
+console.log(
+  `Wrote ${works.length} works (${anime} anime / ${webtoon} webtoon) → ${outPath}`
+);
+console.log(`  genres filled: ${withGenre}, platforms filled: ${withPlatform}`);

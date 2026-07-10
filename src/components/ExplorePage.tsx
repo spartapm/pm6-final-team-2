@@ -5,13 +5,15 @@ import AppShell from "./AppShell";
 import SectionCarousel from "./SectionCarousel";
 import Spinner from "./Spinner";
 import WorkThumbnail from "./WorkThumbnail";
-import { isCompletedStatus, isOngoingStatus, worksByType } from "@/lib/works";
+import {
+  isCompletedStatus,
+  isOngoingStatus,
+  topGenresForType,
+  worksByType,
+} from "@/lib/works";
 import { useAllbluState } from "@/lib/useAllbluState";
 import type { Work, WorkType } from "@/lib/types";
 
-/** CSV status 필터 (장르 데이터 없음) */
-const ANIME_STATUS_FILTERS = ["전체", "방영 중", "방영 종료", "개봉", "공개 예정", "제작 중"];
-const WEBTOON_STATUS_FILTERS = ["전체", "연재 중", "완결"];
 const RANK_PERIODS = [
   { id: "realtime", label: "실시간" },
   { id: "weekly", label: "주간" },
@@ -29,7 +31,7 @@ const GRID_PAGE_SIZE = 30;
 export default function ExplorePage({ type }: { type: WorkType }) {
   const { state } = useAllbluState();
   const [tab, setTab] = useState(type === "anime" ? "recommend" : "ongoing");
-  const [statusFilter, setStatusFilter] = useState("전체");
+  const [genreFilter, setGenreFilter] = useState("전체");
   const [rankPeriod, setRankPeriod] = useState<(typeof RANK_PERIODS)[number]["id"]>("realtime");
   const [count, setCount] = useState(GRID_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -37,7 +39,10 @@ export default function ExplorePage({ type }: { type: WorkType }) {
 
   const userStatuses = state.currentUserId ? state.workStatuses[state.currentUserId] ?? {} : {};
   const all = worksByType(type);
-  const statusFilters = type === "anime" ? ANIME_STATUS_FILTERS : WEBTOON_STATUS_FILTERS;
+  const genreFilters = useMemo(
+    () => ["전체", ...topGenresForType(type)],
+    [type]
+  );
   const isGrid = type === "anime" ? tab === "all" : tab === "done";
 
   const filtered = useMemo(() => {
@@ -45,11 +50,11 @@ export default function ExplorePage({ type }: { type: WorkType }) {
     if (type === "webtoon" && tab === "done") {
       list = all.filter((work) => isCompletedStatus(work.statusLabel));
     }
-    if (isGrid && statusFilter !== "전체") {
-      list = list.filter((work) => work.statusLabel === statusFilter);
+    if (isGrid && genreFilter !== "전체") {
+      list = list.filter((work) => work.genres.includes(genreFilter));
     }
     return list;
-  }, [all, isGrid, statusFilter, tab, type]);
+  }, [all, genreFilter, isGrid, tab, type]);
 
   const animeHomeSections = useMemo(() => {
     if (type !== "anime") return null;
@@ -72,7 +77,7 @@ export default function ExplorePage({ type }: { type: WorkType }) {
 
   useEffect(() => {
     setCount(GRID_PAGE_SIZE);
-    setStatusFilter("전체");
+    setGenreFilter("전체");
   }, [tab, type]);
 
   useEffect(() => {
@@ -135,9 +140,9 @@ export default function ExplorePage({ type }: { type: WorkType }) {
           <CatalogGrid
             works={filtered}
             count={count}
-            statusFilter={statusFilter}
-            statusFilters={statusFilters}
-            onStatusFilterChange={setStatusFilter}
+            genreFilter={genreFilter}
+            genreFilters={genreFilters}
+            onGenreFilterChange={setGenreFilter}
             userId={state.currentUserId}
             statuses={userStatuses}
             loadingMore={loadingMore}
@@ -205,9 +210,9 @@ export default function ExplorePage({ type }: { type: WorkType }) {
 function CatalogGrid({
   works,
   count,
-  statusFilter,
-  statusFilters,
-  onStatusFilterChange,
+  genreFilter,
+  genreFilters,
+  onGenreFilterChange,
   userId,
   statuses,
   loadingMore,
@@ -215,9 +220,9 @@ function CatalogGrid({
 }: {
   works: Work[];
   count: number;
-  statusFilter: string;
-  statusFilters: string[];
-  onStatusFilterChange: (status: string) => void;
+  genreFilter: string;
+  genreFilters: string[];
+  onGenreFilterChange: (genre: string) => void;
   userId?: string;
   statuses: Record<string, import("@/lib/types").WorkStatus>;
   loadingMore: boolean;
@@ -228,13 +233,13 @@ function CatalogGrid({
   return (
     <section>
       <div className="mb-5 flex flex-wrap gap-2">
-        {statusFilters.map((item) => {
-          const active = statusFilter === item;
+        {genreFilters.map((item) => {
+          const active = genreFilter === item;
           return (
             <button
               key={item}
               type="button"
-              onClick={() => onStatusFilterChange(item)}
+              onClick={() => onGenreFilterChange(item)}
               className={`rounded-full px-4 py-2 text-sm font-bold transition ${
                 active
                   ? "bg-brand text-white"

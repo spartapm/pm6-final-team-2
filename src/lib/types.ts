@@ -2,6 +2,12 @@ export type WorkType = "anime" | "webtoon";
 export type WorkStatus = "KEEP" | "WATCHING" | "DONE" | "STOPPED";
 export type StatusAction = WorkStatus | "CANCEL";
 
+export type WorkPlatform = {
+  name: string;
+  url?: string;
+  offerType?: string;
+};
+
 export type Work = {
   id: string;
   title: string;
@@ -11,17 +17,27 @@ export type Work = {
   rating?: number;
   ratingCount: number;
   genres: string[];
+  tags?: string[];
   overview: string;
+  /** Prefer `platforms` (with URLs). Kept for compatibility. */
   platform: string[];
+  platforms?: WorkPlatform[];
   statusLabel: string;
+  ageRating?: string;
+  serialDays?: string[];
   meta: {
     original?: string;
     studio?: string;
+    studios?: string[];
     director?: string;
+    directors?: string[];
     writer?: string;
+    writers?: string[];
     illustrator?: string;
+    illustrators?: string[];
     episodes: string;
     period: string;
+    staffExtra?: string[];
   };
 };
 

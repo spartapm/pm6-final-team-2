@@ -52,3 +52,17 @@ export function isCompletedStatus(label: string) {
 export function isOngoingStatus(label: string) {
   return ["연재 중", "방영 중", "공개 예정", "제작 중"].includes(label);
 }
+
+/** 타입별 장르 빈도순 (필터 칩용) */
+export function topGenresForType(type: WorkType, limit = 12) {
+  const counts = new Map<string, number>();
+  for (const work of worksByType(type)) {
+    for (const genre of work.genres) {
+      counts.set(genre, (counts.get(genre) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+    .slice(0, limit)
+    .map(([name]) => name);
+}
