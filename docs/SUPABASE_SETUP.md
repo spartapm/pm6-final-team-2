@@ -1,7 +1,9 @@
 # ALLBLU Supabase 설정
 
 ## 1. SQL 적용
-Supabase Dashboard → SQL Editor에서 [`supabase/schema.sql`](../supabase/schema.sql) 전체를 실행합니다.
+Supabase Dashboard → SQL Editor에서 [`supabase/schema.sql`](../supabase/schema.sql) 전체를 실행합니다.  
+이미 적용된 DB라면 추가 마이그레이션만 실행:
+- [`supabase/20260713-work-statuses-public-read.sql`](../supabase/20260713-work-statuses-public-read.sql) (타인 마이페이지 보관함 조회)
 
 ## 2. Auth 설정 (MVP)
 Authentication → Providers → Email  

@@ -159,8 +159,9 @@ create policy "profiles_update_own" on public.profiles
 
 -- work_statuses
 drop policy if exists "work_statuses_select_own" on public.work_statuses;
-create policy "work_statuses_select_own" on public.work_statuses
-  for select using (auth.uid() = user_id);
+drop policy if exists "work_statuses_select" on public.work_statuses;
+create policy "work_statuses_select" on public.work_statuses
+  for select using (true);
 drop policy if exists "work_statuses_insert_own" on public.work_statuses;
 create policy "work_statuses_insert_own" on public.work_statuses
   for insert with check (auth.uid() = user_id);

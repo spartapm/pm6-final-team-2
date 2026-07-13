@@ -2,18 +2,26 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
 import { signUp } from "@/lib/auth";
+import { useAllbluState } from "@/lib/useAllbluState";
 
 export default function SignupPage() {
   const router = useRouter();
+  const { state, ready } = useAllbluState();
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (ready && state.currentUserId) {
+      router.replace("/");
+    }
+  }, [ready, state.currentUserId, router]);
 
   const submit = async () => {
     if (!nickname || !email || !password) {
@@ -33,6 +41,14 @@ export default function SignupPage() {
     }
     router.push("/signup/done");
   };
+
+  if (!ready || state.currentUserId) {
+    return (
+      <AppShell>
+        <div className="px-6 py-16 text-center text-sm text-muted">이동 중…</div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

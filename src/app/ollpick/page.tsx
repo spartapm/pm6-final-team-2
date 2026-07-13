@@ -5,6 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import OllpickFeedCard from "@/components/OllpickFeedCard";
+import SectionHeading, { sectionIcons } from "@/components/SectionHeading";
+import WorkCoverImage from "@/components/WorkCoverImage";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import { showToast } from "@/components/Toast";
 import { useAllbluState } from "@/lib/useAllbluState";
@@ -117,7 +119,11 @@ export default function OllpickPage() {
 
         {/* Watched works area */}
         <section>
-          <h2 className="mb-4 text-lg font-black">✅ 내가 본 작품</h2>
+          <SectionHeading
+            title="내가 본 작품"
+            icon={sectionIcons.spyglassSeen}
+            className="mb-4"
+          />
 
           {!hasWatched ? (
             <EmptyWatched onGoRegister={() => router.push("/")} />
@@ -157,10 +163,8 @@ export default function OllpickPage() {
                     <ul className="space-y-3">
                       {unrecommendedWorks.map((work) => (
                         <li key={work.id} className="flex items-center gap-3">
-                          <div className="w-12 shrink-0">
-                            <div
-                              className={`aspect-[3/4] rounded-lg bg-gradient-to-br ${work.coverTone}`}
-                            />
+                          <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-lg bg-[#f3f4f6]">
+                            <WorkCoverImage src={work.thumbnailUrl} alt={work.title} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="line-clamp-1 text-sm font-bold">{work.title}</p>

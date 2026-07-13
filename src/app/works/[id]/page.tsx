@@ -13,15 +13,16 @@ import {
   toggleWorkStatus,
 } from "@/lib/store";
 import { useAllbluState } from "@/lib/useAllbluState";
-import { getWork, works, worksByType } from "@/lib/works";
+import { ratingStatsForWork, buildRatingStatsMap } from "@/lib/ratings";
+import { getWork, statusIconSrc } from "@/lib/works";
 import type { Work, WorkStatus, WorkType } from "@/lib/types";
 
 /** 상세 시청상태: 활성 재클릭 시 해제(토글). 활성=brand / 비활성=흰 테두리 */
-const STATUS_BUTTONS: { code: WorkStatus; label: string; icon: string }[] = [
-  { code: "WATCHING", label: "보는중", icon: "▶" },
-  { code: "DONE", label: "완료", icon: "✅" },
-  { code: "KEEP", label: "볼 예정", icon: "📌" },
-  { code: "STOPPED", label: "중단", icon: "⏸" },
+const STATUS_BUTTONS: { code: WorkStatus; label: string }[] = [
+  { code: "WATCHING", label: "보는중" },
+  { code: "DONE", label: "완료" },
+  { code: "KEEP", label: "볼 예정" },
+  { code: "STOPPED", label: "중단" },
 ];
 
 export default function WorkDetailPage() {
@@ -55,21 +56,22 @@ export default function WorkDetailPage() {
 
   const recommendations = useMemo(() => {
     if (!workId) return [];
-    const fromPicks = state.picks
+    return state.picks
       .filter((pick) => pick.baseWorkId === workId)
       .map((pick) => getWork(pick.recommendedWorkId))
-      .filter((item): item is Work => item != null && item.type === activeRecType);
-
-    if (fromPicks.length >= 6) return fromPicks.slice(0, 6);
-
-    const fallback = worksByType(activeRecType)
-      .filter((item) => item.id !== workId && !fromPicks.some((pick) => pick.id === item.id))
-      .slice(0, 6 - fromPicks.length);
-
-    return [...fromPicks, ...fallback].slice(0, 6);
+      .filter((item): item is Work => item != null && item.type === activeRecType)
+      .slice(0, 6);
   }, [activeRecType, state.picks, workId]);
 
-  const series = useMemo(() => (work ? buildSeries(work) : []), [work]);
+  const { average: ratingAverage, count: ratingCount } = useMemo(
+    () => ratingStatsForWork(state.reviews, workId),
+    [state.reviews, workId]
+  );
+  const ratingValue = ratingAverage;
+  const ratingStats = useMemo(
+    () => buildRatingStatsMap(state.reviews),
+    [state.reviews]
+  );
 
   if (!work) notFound();
 
@@ -124,8 +126,6 @@ export default function WorkDetailPage() {
       ? `${work.overview.slice(0, 90)}…`
       : work.overview;
 
-  const ratingValue = work.rating ?? 0;
-
   return (
     <AppShell>
       <div className="px-5 py-6 lg:px-8">
@@ -136,6 +136,7 @@ export default function WorkDetailPage() {
               work={work}
               userId={state.currentUserId}
               status={userStatus}
+              averageRating={ratingAverage}
               showMeta={false}
             />
           </div>
@@ -151,18 +152,27 @@ export default function WorkDetailPage() {
 
             <div className="mt-4 flex flex-wrap items-end gap-3">
               <span className="text-4xl font-black leading-none">
-                {work.rating ? work.rating.toFixed(1) : "-"}
+                {ratingAverage.toFixed(1)}
               </span>
               <div>
-                <div className="flex gap-0.5 text-xl text-yellow-400">
+                <div
+                  className={`flex gap-0.5 text-xl ${
+                    ratingCount > 0 ? "text-yellow-400" : "text-slate-300"
+                  }`}
+                >
                   {[1, 2, 3, 4, 5].map((star) => (
-                    <span key={star} className={star <= Math.round(ratingValue) ? "" : "text-slate-200"}>
+                    <span
+                      key={star}
+                      className={
+                        ratingCount > 0 && star <= Math.round(ratingValue) ? "" : "text-slate-300"
+                      }
+                    >
                       ★
                     </span>
                   ))}
                 </div>
                 <p className="mt-1 text-xs font-bold text-muted">
-                  {work.ratingCount.toLocaleString()}명 평가
+                  {ratingCount.toLocaleString()}명 평가
                 </p>
               </div>
             </div>
@@ -183,7 +193,13 @@ export default function WorkDetailPage() {
                           : "border-line bg-white text-ink hover:bg-surface"
                       }`}
                     >
-                      <span className="text-xs">{button.icon}</span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={statusIconSrc(button.code, active ? "white" : "brand")}
+                        alt=""
+                        className="h-4 w-4 object-contain"
+                        draggable={false}
+                      />
                       {button.label}
                     </button>
                   );
@@ -307,6 +323,7 @@ export default function WorkDetailPage() {
                       work={item}
                       userId={state.currentUserId}
                       status={userStatuses[item.id]}
+                      averageRating={ratingStats.get(item.id)?.average ?? 0}
                       compact
                     />
                   ))}
@@ -353,17 +370,8 @@ export default function WorkDetailPage() {
                   ))}
                 </div>
               </div>
-              <div className="divide-y divide-line rounded-xl border border-line">
-                {(seriesOrder === "air" ? series : [...series].reverse()).map((item, index) => (
-                  <Link
-                    key={`${item.id}-${index}`}
-                    href={`/works/${item.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-blueSoft"
-                  >
-                    <span className="font-bold text-ink">{item.title}</span>
-                    <span className="shrink-0 text-xs font-bold text-muted">{item.meta}</span>
-                  </Link>
-                ))}
+              <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-line">
+                <p className="text-lg font-bold text-muted">준비중입니다</p>
               </div>
             </section>
 
@@ -551,31 +559,4 @@ function MetaRow({ label, value }: { label: string; value: string }) {
       <span className="text-right font-bold text-ink">{value}</span>
     </div>
   );
-}
-
-function buildSeries(work: Work) {
-  const pool = works
-    .filter((item) => item.type === work.type)
-    .slice(0, 8);
-
-  const currentIndex = Math.max(
-    0,
-    pool.findIndex((item) => item.id === work.id)
-  );
-
-  const ordered = [
-    ...pool.slice(currentIndex),
-    ...pool.slice(0, currentIndex),
-  ].slice(0, 5);
-
-  return ordered.map((item, index) => ({
-    id: item.id,
-    title: item.title,
-    meta:
-      work.type === "anime"
-        ? index === 1
-          ? "극장판"
-          : `시즌 ${index + 1} / ${12 + index * 2}화`
-        : `${index + 1}부 / ${item.meta.episodes}`,
-  }));
 }

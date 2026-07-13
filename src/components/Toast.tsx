@@ -26,7 +26,7 @@ export default function Toast() {
   const needsAuth = message.includes("로그인");
 
   return (
-    <div className="fixed bottom-6 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl bg-brandDeep px-5 py-3 text-center text-sm font-bold text-white shadow-menu">
+    <div className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl bg-brandDeep px-5 py-3 text-center text-sm font-bold text-white shadow-menu">
       {message}
       {needsAuth ? (
         <div className="mt-2 flex justify-center gap-2">

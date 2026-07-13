@@ -1,8 +1,23 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
+import { useAllbluState } from "@/lib/useAllbluState";
 
 export default function SignupDonePage() {
+  const router = useRouter();
+  const { state, ready } = useAllbluState();
+
+  // 혹시 세션이 남아 있으면 홈으로 (정상 플로우는 비로그인)
+  useEffect(() => {
+    if (ready && state.currentUserId) {
+      router.replace("/");
+    }
+  }, [ready, state.currentUserId, router]);
+
   return (
     <AppShell>
       <section className="flex min-h-[620px] items-center justify-center px-6 py-14 text-center">

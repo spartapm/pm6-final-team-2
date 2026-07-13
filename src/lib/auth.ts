@@ -103,6 +103,10 @@ export async function signUp(
     );
   }
 
+  // AUTH-DONE: 자동 로그인 아님. Confirm email OFF면 signUp이 세션을 만들므로 즉시 해제.
+  await supabase.auth.signOut();
+  window.dispatchEvent(new Event("allblu-state-change"));
+
   return { ok: true };
 }
 
@@ -116,6 +120,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   });
   if (error) return { ok: false, message: mapAuthError(error.message) };
   const user = data.user ? await fetchProfile(data.user.id) : undefined;
+  window.dispatchEvent(new Event("allblu-state-change"));
   return { ok: true, user };
 }
 

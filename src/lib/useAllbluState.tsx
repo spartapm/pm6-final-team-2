@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { getSessionUser } from "./auth";
 import { loadAppSnapshot } from "./db";
 import { supabase, supabaseConfigured } from "./supabase";
@@ -15,7 +23,15 @@ const emptyState: AppState = {
   picks: [],
 };
 
-export function useAllbluState() {
+type AllbluContextValue = {
+  state: AppState;
+  ready: boolean;
+  refresh: () => Promise<void>;
+};
+
+const AllbluContext = createContext<AllbluContextValue | null>(null);
+
+export function AllbluProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(emptyState);
   const [ready, setReady] = useState(false);
 
@@ -54,5 +70,20 @@ export function useAllbluState() {
     };
   }, [refresh]);
 
-  return { state, ready, refresh };
+  const value = useMemo(
+    () => ({ state, ready, refresh }),
+    [state, ready, refresh]
+  );
+
+  return (
+    <AllbluContext.Provider value={value}>{children}</AllbluContext.Provider>
+  );
+}
+
+export function useAllbluState() {
+  const ctx = useContext(AllbluContext);
+  if (!ctx) {
+    throw new Error("useAllbluState must be used within AllbluProvider");
+  }
+  return ctx;
 }

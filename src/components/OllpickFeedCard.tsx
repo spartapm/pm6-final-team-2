@@ -87,6 +87,7 @@ export default function OllpickFeedCard({
             userId={userId}
             status={statuses[base.id]}
             compact
+            showMeta={false}
           />
           <p className="mt-1 text-center text-[11px] font-bold text-muted">
             {base.type === "anime" ? "애니" : "웹툰"}
@@ -99,6 +100,7 @@ export default function OllpickFeedCard({
             userId={userId}
             status={statuses[recommended.id]}
             compact
+            showMeta={false}
           />
           <p className="mt-1 text-center text-[11px] font-bold text-muted">
             {recommended.type === "anime" ? "애니" : "웹툰"}

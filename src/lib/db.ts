@@ -444,6 +444,57 @@ export async function getFollowerCount(userId?: string) {
   return count ?? 0;
 }
 
+export type FollowListUser = {
+  id: string;
+  nickname: string;
+  badge: string;
+};
+
+/** 나를 팔로우하는 유저 목록 */
+export async function listFollowers(userId: string): Promise<FollowListUser[]> {
+  const { data, error } = await supabase
+    .from("follows")
+    .select("follower_id")
+    .eq("following_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const ids = (data ?? []).map((row) => row.follower_id as string);
+  return loadFollowProfiles(ids);
+}
+
+/** 내가 팔로우하는 유저 목록 */
+export async function listFollowing(userId: string): Promise<FollowListUser[]> {
+  const { data, error } = await supabase
+    .from("follows")
+    .select("following_id")
+    .eq("follower_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const ids = (data ?? []).map((row) => row.following_id as string);
+  return loadFollowProfiles(ids);
+}
+
+async function loadFollowProfiles(userIds: string[]): Promise<FollowListUser[]> {
+  if (!userIds.length) return [];
+  const { data } = await supabase
+    .from("profiles")
+    .select("user_id, nickname, badge")
+    .in("user_id", userIds);
+  const byId = new Map(
+    (data ?? []).map((row) => [
+      row.user_id as string,
+      {
+        id: row.user_id as string,
+        nickname: (row.nickname as string) || "유저",
+        badge: (row.badge as string) || "올블루 스타터",
+      },
+    ])
+  );
+  return userIds.map(
+    (id) => byId.get(id) ?? { id, nickname: "유저", badge: "올블루 스타터" }
+  );
+}
+
 export async function loadAppSnapshot(user?: User | null) {
   const [reviews, picks] = await Promise.all([loadReviews(), loadPicks()]);
   let workStatuses: Record<string, Record<string, WorkStatus>> = {};

@@ -21,7 +21,7 @@ const navItems = [
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const { state } = useAllbluState();
+  const { state, ready } = useAllbluState();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"all" | WorkType>("all");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -110,7 +110,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ) : null}
           </div>
 
-          {user ? (
+          {/* 세션 확인 전에는 비로그인 CTA를 그리지 않음 (깜빡임·오클릭 방지) */}
+          {!ready ? (
+            <div
+              className="h-10 w-[88px] shrink-0 animate-pulse rounded-full bg-search"
+              aria-hidden
+            />
+          ) : user ? (
             <div className="flex items-center gap-2">
               <Link
                 href="/mypage"

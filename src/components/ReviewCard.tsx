@@ -1,33 +1,68 @@
-import Link from "next/link";
-import { getWork } from "@/lib/works";
-import type { Review } from "@/lib/types";
+"use client";
 
-export default function ReviewCard({ review }: { review: Review }) {
+import Link from "next/link";
+import WorkThumbnail from "./WorkThumbnail";
+import { getWork } from "@/lib/works";
+import type { Review, WorkStatus } from "@/lib/types";
+
+/** 홈 인기평가 카드 — 썸네일(상태버튼) + 제목·평가·닉네임·공감수. 클릭 시 평가 상세. */
+export default function ReviewCard({
+  review,
+  userId,
+  status,
+}: {
+  review: Review;
+  userId?: string;
+  status?: WorkStatus;
+}) {
   const work = getWork(review.workId);
   if (!work) return null;
 
+  const detailHref = `/reviews/${review.id}`;
+
   return (
-    <Link
-      href={`/reviews/${review.id}`}
-      className="block overflow-hidden rounded-2xl border border-line bg-white transition hover:shadow-card"
-    >
-      <div className={`h-36 bg-gradient-to-br ${work.coverTone}`} />
-      <div className="p-4">
-        <h3 className="mb-1 line-clamp-1 text-[15px] font-black">{work.title}</h3>
-        <p className="mb-2 text-xs font-bold text-muted">작품 평가글</p>
-        <p className="line-clamp-3 min-h-[60px] text-sm leading-relaxed text-ink/80">
+    <article className="flex min-h-[140px] gap-3 overflow-hidden rounded-2xl border border-line bg-white p-3 transition hover:shadow-card">
+      <div className="w-[88px] shrink-0 sm:w-[96px]">
+        <WorkThumbnail
+          work={work}
+          userId={userId}
+          status={status}
+          showMeta={false}
+          href={detailHref}
+        />
+      </div>
+
+      <Link href={detailHref} className="flex min-w-0 flex-1 flex-col py-0.5">
+        <h3 className="line-clamp-1 text-[15px] font-black text-ink">{work.title}</h3>
+        <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed text-muted">
           {review.content}
         </p>
-        <div className="mt-4 flex items-center justify-between gap-2 text-xs text-muted">
-          <span className="inline-flex items-center gap-2 font-bold">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-search text-[10px] text-ink">
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted">
+          <span className="inline-flex min-w-0 items-center gap-2 font-bold">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-search text-[10px] text-ink">
               {review.nickname.slice(0, 1)}
             </span>
-            {review.nickname}
+            <span className="line-clamp-1">{review.nickname}</span>
           </span>
-          <span className="font-bold">공감 {review.likeCount.toLocaleString()}개</span>
+          <span className="inline-flex shrink-0 items-center gap-1 font-bold">
+            <HeartIcon />
+            공감 {review.likeCount.toLocaleString()}개
+          </span>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
+  );
+}
+
+function HeartIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20.5s-7.2-4.35-9.3-8.1C1.2 9.45 2.55 6.5 5.4 6.5c1.7 0 3.15 1 3.9 2.4.75-1.4 2.2-2.4 3.9-2.4 2.85 0 4.2 2.95 2.7 5.9C19.2 16.15 12 20.5 12 20.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

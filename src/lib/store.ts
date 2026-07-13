@@ -22,4 +22,8 @@ export {
   isFollowing,
   getFollowerCount,
   getFollowingCount,
+  listFollowers,
+  listFollowing,
 } from "./db";
+export type { FollowListUser } from "./db";
+export { fetchProfile } from "./auth";

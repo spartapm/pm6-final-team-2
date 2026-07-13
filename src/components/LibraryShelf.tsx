@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import Spinner from "@/components/Spinner";
+import { buildRatingStatsMap } from "@/lib/ratings";
+import { useAllbluState } from "@/lib/useAllbluState";
 import { works } from "@/lib/works";
 import type { WorkStatus, WorkType } from "@/lib/types";
 
@@ -20,9 +22,15 @@ export default function LibraryShelf({
   statuses: Record<string, WorkStatus>;
   statusTimes: Record<string, string>;
 }) {
+  const { state } = useAllbluState();
   const [count, setCount] = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  const ratingStats = useMemo(
+    () => buildRatingStatsMap(state.reviews),
+    [state.reviews]
+  );
 
   const library = useMemo(
     () =>
@@ -82,6 +90,7 @@ export default function LibraryShelf({
             work={work}
             userId={userId}
             status={statuses[work.id]}
+            averageRating={ratingStats.get(work.id)?.average ?? 0}
             metaMode="library"
           />
         ))}

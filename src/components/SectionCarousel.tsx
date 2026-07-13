@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SectionHeading from "./SectionHeading";
 import WorkThumbnail from "./WorkThumbnail";
+import type { WorkRatingStats } from "@/lib/ratings";
 import type { Work, WorkStatus } from "@/lib/types";
 
 export default function SectionCarousel({
   title,
+  icon,
   works,
   userId,
   statuses = {},
+  ratingStats,
   rank = false,
   pageSize = 6,
   tabs,
@@ -17,9 +21,11 @@ export default function SectionCarousel({
   tabStyle = "pipe",
 }: {
   title: string;
+  icon?: string;
   works: Work[];
   userId?: string;
   statuses?: Record<string, WorkStatus>;
+  ratingStats?: Map<string, WorkRatingStats>;
   rank?: boolean;
   pageSize?: number;
   tabs?: { id: string; label: string }[];
@@ -38,7 +44,7 @@ export default function SectionCarousel({
   return (
     <section className="section-card">
       <div className="mb-4">
-        <h2 className="text-lg font-black tracking-tight">{title}</h2>
+        <SectionHeading title={title} icon={icon} />
         {tabs ? (
           tabStyle === "underline" ? (
             <div className="mt-3 flex items-center gap-5 text-sm font-bold">
@@ -101,6 +107,7 @@ export default function SectionCarousel({
               work={work}
               userId={userId}
               status={statuses[work.id]}
+              averageRating={ratingStats?.get(work.id)?.average ?? 0}
               rank={rank ? page * pageSize + index + 1 : undefined}
               compact
             />

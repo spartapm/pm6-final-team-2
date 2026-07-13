@@ -8,7 +8,7 @@ import WorkThumbnail from "@/components/WorkThumbnail";
 import { showToast } from "@/components/Toast";
 import { agreePick } from "@/lib/store";
 import { useAllbluState } from "@/lib/useAllbluState";
-import { getWork, works, worksByType } from "@/lib/works";
+import { getWork, works } from "@/lib/works";
 import type { Ollpick, Work } from "@/lib/types";
 
 export default function UserRecDetailPage() {
@@ -37,55 +37,12 @@ export default function UserRecDetailPage() {
   const recommendationRows = useMemo(() => {
     if (!baseWork) return [] as { work: Work; pick: Ollpick }[];
 
-    const fromPicks = relatedPicks
+    return relatedPicks
       .map((pick) => {
         const work = getWork(pick.recommendedWorkId);
         return work ? { work, pick } : null;
       })
       .filter((item): item is { work: Work; pick: Ollpick } => item != null);
-
-    if (fromPicks.length >= 3) return fromPicks;
-
-    const used = new Set(fromPicks.map((item) => item.work.id));
-    const fallback = worksByType(baseWork.type)
-      .filter((work) => work.id !== baseWork.id && !used.has(work.id))
-      .slice(0, 3 - fromPicks.length)
-      .map((work, index) => ({
-        work,
-        pick: {
-          id: `fallback-${baseWork.id}-${work.id}`,
-          baseWorkId: baseWork.id,
-          recommendedWorkId: work.id,
-          firstRecommender: "올블루",
-          agreeUserIds: Array.from({ length: 40 + index * 28 }, (_, i) => `f-${i}`),
-          reasons: [
-            {
-              id: `fallback-reason-a-${work.id}`,
-              userId: "guest-a",
-              nickname: "katzvvy",
-              content: "둘 다 다크한 액션 배틀물이면서 개그 타이밍이 비슷해요.",
-              createdAt: new Date(Date.now() - index * 3600_000).toISOString(),
-            },
-            {
-              id: `fallback-reason-b-${work.id}`,
-              userId: "guest-b",
-              nickname: "anijjang",
-              content: "작화·연출 텐션도 나란히 상위권이라 이어보기 좋아요.",
-              createdAt: new Date(Date.now() - (index + 2) * 7200_000).toISOString(),
-            },
-            {
-              id: `fallback-reason-c-${work.id}`,
-              userId: "demo",
-              nickname: "올블루",
-              content: `${baseWork.title}를 좋아한다면 ${work.title}의 분위기와 전개도 잘 맞을 거예요.`,
-              createdAt: new Date(Date.now() - (index + 4) * 10_000_000).toISOString(),
-            },
-          ],
-          createdAt: new Date().toISOString(),
-        } satisfies Ollpick,
-      }));
-
-    return [...fromPicks, ...fallback];
   }, [baseWork, relatedPicks]);
 
   if (!baseWork) notFound();
@@ -211,7 +168,6 @@ function RecommendationBlock({
   );
   const visibleReasons = openReasons ? reasons : reasons.slice(0, 2);
   const alreadyAgreed = userId ? pick.agreeUserIds.includes(userId) : false;
-  const isFallback = pick.id.startsWith("fallback-");
   const particle = endsWithBatchim(work.title) ? "을" : "를";
 
   const beginAgree = () => {
@@ -223,11 +179,6 @@ function RecommendationBlock({
       showToast("본 작품(보는중/완료) 등록 후 동의할 수 있습니다");
       return;
     }
-    /** fallback(아직 DB 추천 없음)은 작성 페이지로 유도 */
-    if (isFallback) {
-      onWrite();
-      return;
-    }
     if (alreadyAgreed) {
       showToast("이미 동의한 추천입니다");
       return;
@@ -236,7 +187,7 @@ function RecommendationBlock({
   };
 
   const submitAgree = async () => {
-    if (!userId || alreadyAgreed || isFallback) return;
+    if (!userId || alreadyAgreed) return;
     if (reason.trim().length < 10 || reason.length > 200) {
       alert("추천 이유는 10자 이상 200자 이하로 작성해주세요.");
       return;
@@ -276,11 +227,11 @@ function RecommendationBlock({
             </span>
             <button
               type="button"
-              disabled={!isFallback && alreadyAgreed}
+              disabled={alreadyAgreed}
               onClick={beginAgree}
               className="rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40"
             >
-              {alreadyAgreed && !isFallback ? "동의함" : "+ 동의하기"}
+              {alreadyAgreed ? "동의함" : "+ 동의하기"}
             </button>
           </div>
         </div>

@@ -2,17 +2,26 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
 import { signIn } from "@/lib/auth";
+import { useAllbluState } from "@/lib/useAllbluState";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { state, ready } = useAllbluState();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // 이미 로그인된 상태면 로그인 폼·세션 덮어쓰기 방지
+  useEffect(() => {
+    if (ready && state.currentUserId) {
+      router.replace("/");
+    }
+  }, [ready, state.currentUserId, router]);
 
   const submit = async () => {
     if (!email || !password) {
@@ -26,8 +35,16 @@ export default function LoginPage() {
       setError(result.message);
       return;
     }
-    router.push("/");
+    router.replace("/");
   };
+
+  if (!ready || state.currentUserId) {
+    return (
+      <AppShell>
+        <div className="px-6 py-16 text-center text-sm text-muted">이동 중…</div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

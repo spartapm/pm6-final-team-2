@@ -92,10 +92,15 @@ export default function ReviewDetailPage() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="mb-2 flex items-center gap-2">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-black text-white">
-                      {review.nickname.slice(0, 1)}
-                    </span>
-                    <span className="text-sm font-bold">{review.nickname}</span>
+                    <Link
+                      href={`/mypage/${review.userId}`}
+                      className="flex items-center gap-2 hover:opacity-80"
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-black text-white">
+                        {review.nickname.slice(0, 1)}
+                      </span>
+                      <span className="text-sm font-bold">{review.nickname}</span>
+                    </Link>
                   </div>
                   <Link
                     href={`/works/${work.id}`}

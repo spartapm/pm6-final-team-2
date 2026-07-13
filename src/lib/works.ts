@@ -1,16 +1,29 @@
 import type { StatusAction, Work, WorkStatus, WorkType } from "./types";
 import worksData from "./works.data.json";
 
+const STATUS_ICON_FILES: Record<StatusAction, string> = {
+  KEEP: "Keep",
+  WATCHING: "Watching",
+  DONE: "Done",
+  STOPPED: "Stopped",
+  CANCEL: "Cancel",
+};
+
+export function statusIconSrc(code: StatusAction, variant: "brand" | "white" = "brand") {
+  const file = STATUS_ICON_FILES[code];
+  return variant === "white" ? `/status/${file}-white.png` : `/status/${file}.png`;
+}
+
 export const statusOptions: {
   code: StatusAction;
   label: string;
   icon: string;
 }[] = [
-  { code: "KEEP", label: "볼 예정", icon: "📌" },
-  { code: "WATCHING", label: "보는 중", icon: "▶️" },
-  { code: "DONE", label: "완료", icon: "✅" },
-  { code: "STOPPED", label: "중단", icon: "⏸️" },
-  { code: "CANCEL", label: "취소", icon: "❌" },
+  { code: "KEEP", label: "볼 예정", icon: statusIconSrc("KEEP") },
+  { code: "WATCHING", label: "보는 중", icon: statusIconSrc("WATCHING") },
+  { code: "DONE", label: "완료", icon: statusIconSrc("DONE") },
+  { code: "STOPPED", label: "중단", icon: statusIconSrc("STOPPED") },
+  { code: "CANCEL", label: "취소", icon: statusIconSrc("CANCEL") },
 ];
 
 /** Google Sheet → works.data.json (Supabase works 테이블 없음). 갱신: npm run generate:works */

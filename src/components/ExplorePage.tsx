@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AppShell from "./AppShell";
 import SectionCarousel from "./SectionCarousel";
+import SectionHeading, { sectionIcons } from "./SectionHeading";
 import Spinner from "./Spinner";
 import WorkThumbnail from "./WorkThumbnail";
 import {
@@ -11,6 +13,7 @@ import {
   topGenresForType,
   worksByType,
 } from "@/lib/works";
+import { buildRatingStatsMap } from "@/lib/ratings";
 import { useAllbluState } from "@/lib/useAllbluState";
 import type { Work, WorkType } from "@/lib/types";
 
@@ -28,16 +31,53 @@ const HOME_CAROUSEL_MAX = 20;
 /** 애니 전체 / 웹툰 완결: 가로6×세로5 = 30, 이후 30개씩 무한스크롤 */
 const GRID_PAGE_SIZE = 30;
 
+function defaultTab(type: WorkType) {
+  return type === "anime" ? "recommend" : "ongoing";
+}
+
+function scrollStorageKey(pathname: string, search: string) {
+  return `allblu:explore-scroll:${pathname}${search}`;
+}
+
 export default function ExplorePage({ type }: { type: WorkType }) {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="px-5 py-16 text-center text-sm text-muted">불러오는 중…</div>
+        </AppShell>
+      }
+    >
+      <ExplorePageInner type={type} />
+    </Suspense>
+  );
+}
+
+function ExplorePageInner({ type }: { type: WorkType }) {
   const { state } = useAllbluState();
-  const [tab, setTab] = useState(type === "anime" ? "recommend" : "ongoing");
-  const [genreFilter, setGenreFilter] = useState("전체");
+  const router = useRouter();
+  const pathname = usePathname() ?? (type === "anime" ? "/anime" : "/webtoon");
+  const searchParams = useSearchParams();
+
+  const tab = searchParams.get("tab") || defaultTab(type);
+  const genreFilter = searchParams.get("genre") || "전체";
+  const countParam = Number(searchParams.get("n") || "");
+  const [count, setCount] = useState(
+    Number.isFinite(countParam) && countParam >= GRID_PAGE_SIZE
+      ? countParam
+      : GRID_PAGE_SIZE
+  );
   const [rankPeriod, setRankPeriod] = useState<(typeof RANK_PERIODS)[number]["id"]>("realtime");
-  const [count, setCount] = useState(GRID_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const scrollRestoredRef = useRef(false);
+  const skipCountUrlSyncRef = useRef(true);
 
   const userStatuses = state.currentUserId ? state.workStatuses[state.currentUserId] ?? {} : {};
+  const ratingStats = useMemo(
+    () => buildRatingStatsMap(state.reviews),
+    [state.reviews]
+  );
   const all = worksByType(type);
   const genreFilters = useMemo(
     () => ["전체", ...topGenresForType(type)],
@@ -75,10 +115,51 @@ export default function ExplorePage({ type }: { type: WorkType }) {
     [all]
   );
 
+  const buildQuery = useCallback(
+    (next: { tab?: string; genre?: string; n?: number }) => {
+      const params = new URLSearchParams();
+      const nextTab = next.tab ?? tab;
+      const nextGenre = next.genre ?? genreFilter;
+      const nextN = next.n ?? count;
+      if (nextTab !== defaultTab(type)) params.set("tab", nextTab);
+      if (nextGenre !== "전체") params.set("genre", nextGenre);
+      if (nextTab === "all" || nextTab === "done") {
+        if (nextN > GRID_PAGE_SIZE) params.set("n", String(nextN));
+      }
+      const qs = params.toString();
+      return qs ? `${pathname}?${qs}` : pathname;
+    },
+    [tab, genreFilter, count, type, pathname]
+  );
+
+  const pushExploreUrl = useCallback(
+    (next: { tab?: string; genre?: string; n?: number }) => {
+      router.push(buildQuery(next), { scroll: false });
+    },
+    [router, buildQuery]
+  );
+
+  /** URL tab/genre 변경 시 count·스크롤 복원 플래그 리셋 */
   useEffect(() => {
-    setCount(GRID_PAGE_SIZE);
-    setGenreFilter("전체");
-  }, [tab, type]);
+    const fromUrl =
+      Number.isFinite(countParam) && countParam >= GRID_PAGE_SIZE
+        ? countParam
+        : GRID_PAGE_SIZE;
+    setCount(fromUrl);
+    scrollRestoredRef.current = false;
+    skipCountUrlSyncRef.current = true;
+  }, [tab, genreFilter, type, countParam]);
+
+  /** 무한스크롤 count → URL (같은 히스토리 엔트리만 갱신, 스크롤 유지) */
+  useEffect(() => {
+    if (!isGrid) return;
+    if (skipCountUrlSyncRef.current) {
+      skipCountUrlSyncRef.current = false;
+      return;
+    }
+    const url = buildQuery({ n: count });
+    window.history.replaceState(window.history.state, "", url);
+  }, [count, isGrid, buildQuery]);
 
   useEffect(() => {
     if (!isGrid) return;
@@ -102,6 +183,69 @@ export default function ExplorePage({ type }: { type: WorkType }) {
     return () => observer.disconnect();
   }, [count, filtered.length, isGrid, loadingMore]);
 
+  /** 작품 상세로 나갈 때 스크롤 저장 */
+  useEffect(() => {
+    const key = scrollStorageKey(pathname, window.location.search);
+    const save = () => {
+      try {
+        sessionStorage.setItem(key, String(window.scrollY));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      const anchor = target?.closest?.("a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href") ?? "";
+      if (href.startsWith("/works/")) save();
+    };
+
+    window.addEventListener("pagehide", save);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      save();
+      window.removeEventListener("pagehide", save);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [pathname, tab, genreFilter, count]);
+
+  /** 뒤로가기 복귀 시 스크롤 복원 (그리드 아이템 렌더 후) */
+  useEffect(() => {
+    if (scrollRestoredRef.current) return;
+    const key = scrollStorageKey(pathname, window.location.search);
+    let saved = 0;
+    try {
+      saved = Number(sessionStorage.getItem(key) || "");
+    } catch {
+      saved = 0;
+    }
+    if (!Number.isFinite(saved) || saved <= 0) {
+      scrollRestoredRef.current = true;
+      return;
+    }
+
+    const restore = () => {
+      const prev = document.documentElement.style.scrollBehavior;
+      document.documentElement.style.scrollBehavior = "auto";
+      window.scrollTo(0, saved);
+      document.documentElement.style.scrollBehavior = prev;
+      scrollRestoredRef.current = true;
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // 레이아웃·이미지 높이 반영을 위해 두 프레임 대기
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(restore);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [pathname, tab, genreFilter, count, filtered.length, isGrid]);
+
   const primaryTabs =
     type === "anime"
       ? [
@@ -123,7 +267,14 @@ export default function ExplorePage({ type }: { type: WorkType }) {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setTab(item.id)}
+                onClick={() => {
+                  setCount(GRID_PAGE_SIZE);
+                  pushExploreUrl({
+                    tab: item.id,
+                    genre: "전체",
+                    n: GRID_PAGE_SIZE,
+                  });
+                }}
                 className={`rounded-full px-5 py-2.5 text-sm font-bold transition ${
                   active
                     ? "bg-brand text-white shadow-sm"
@@ -142,19 +293,25 @@ export default function ExplorePage({ type }: { type: WorkType }) {
             count={count}
             genreFilter={genreFilter}
             genreFilters={genreFilters}
-            onGenreFilterChange={setGenreFilter}
+            onGenreFilterChange={(genre) => {
+              setCount(GRID_PAGE_SIZE);
+              pushExploreUrl({ genre, n: GRID_PAGE_SIZE });
+            }}
             userId={state.currentUserId}
             statuses={userStatuses}
+            ratingStats={ratingStats}
             loadingMore={loadingMore}
             sentinelRef={sentinelRef}
           />
         ) : type === "anime" && animeHomeSections ? (
           <div className="space-y-5">
             <SectionCarousel
-              title="🔥 인기작 순위 TOP 20"
+              title="인기작 순위 TOP 20"
+              icon={sectionIcons.bigWave}
               works={animeHomeSections.rank}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
               rank
               pageSize={HOME_CAROUSEL_PAGE}
               tabs={[...RANK_PERIODS]}
@@ -165,40 +322,50 @@ export default function ExplorePage({ type }: { type: WorkType }) {
               tabStyle="underline"
             />
             <SectionCarousel
-              title="🎀 완결·종료 애니"
+              title="완결·종료 애니"
+              icon={sectionIcons.anchor}
               works={animeHomeSections.completed}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
               pageSize={HOME_CAROUSEL_PAGE}
             />
             <SectionCarousel
-              title="✨ 방영 중·공개 예정"
+              title="방영 중·공개 예정"
+              icon={sectionIcons.sunrise}
               works={animeHomeSections.newSeason}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
               pageSize={HOME_CAROUSEL_PAGE}
             />
             <SectionCarousel
-              title="🆕 최근 추가된 작품"
+              title="최근 추가된 작품"
+              icon={sectionIcons.dropletNew}
               works={animeHomeSections.recent}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
               pageSize={HOME_CAROUSEL_PAGE}
             />
           </div>
         ) : (
           <div className="space-y-5">
             <PlatformSection
-              title="🟢 연재 중 웹툰"
+              title="연재 중 웹툰"
+              icon={sectionIcons.waveOngoing}
               works={webtoonOngoing.slice(0, 48)}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
             />
             <PlatformSection
-              title="📚 더 많은 연재작"
+              title="더 많은 연재작"
+              icon={sectionIcons.fishSchool}
               works={webtoonOngoing.slice(48, 96)}
               userId={state.currentUserId}
               statuses={userStatuses}
+              ratingStats={ratingStats}
             />
           </div>
         )}
@@ -215,6 +382,7 @@ function CatalogGrid({
   onGenreFilterChange,
   userId,
   statuses,
+  ratingStats,
   loadingMore,
   sentinelRef,
 }: {
@@ -225,6 +393,7 @@ function CatalogGrid({
   onGenreFilterChange: (genre: string) => void;
   userId?: string;
   statuses: Record<string, import("@/lib/types").WorkStatus>;
+  ratingStats?: Map<string, import("@/lib/ratings").WorkRatingStats>;
   loadingMore: boolean;
   sentinelRef: React.RefObject<HTMLDivElement>;
 }) {
@@ -264,6 +433,7 @@ function CatalogGrid({
               work={work}
               userId={userId}
               status={statuses[work.id]}
+              averageRating={ratingStats?.get(work.id)?.average ?? 0}
               metaMode="status"
             />
           ))}
@@ -282,18 +452,22 @@ function CatalogGrid({
 
 function PlatformSection({
   title,
+  icon,
   works,
   userId,
   statuses,
+  ratingStats,
 }: {
   title: string;
+  icon?: string;
   works: Work[];
   userId?: string;
   statuses: Record<string, import("@/lib/types").WorkStatus>;
+  ratingStats?: Map<string, import("@/lib/ratings").WorkRatingStats>;
 }) {
   return (
     <section className="section-card">
-      <h2 className="mb-4 text-lg font-black tracking-tight">{title}</h2>
+      <SectionHeading title={title} icon={icon} className="mb-4" />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-8">
         {works.slice(0, 24).map((work) => (
           <WorkThumbnail
@@ -301,6 +475,7 @@ function PlatformSection({
             work={work}
             userId={userId}
             status={statuses[work.id]}
+            averageRating={ratingStats?.get(work.id)?.average ?? 0}
             compact
             metaMode="status"
           />

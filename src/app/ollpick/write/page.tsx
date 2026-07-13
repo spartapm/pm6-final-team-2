@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { showToast } from "@/components/Toast";
+import WorkCoverImage from "@/components/WorkCoverImage";
 import { addPick } from "@/lib/store";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, works } from "@/lib/works";
@@ -294,9 +295,9 @@ function WorkSearchField({
                     onClick={() => pickWork(work.id)}
                     className="flex w-full items-center gap-3 border-b border-line/70 px-3 py-2.5 text-left last:border-0 hover:bg-blueSoft"
                   >
-                    <div
-                      className={`h-12 w-9 shrink-0 rounded-md bg-gradient-to-br ${work.coverTone}`}
-                    />
+                    <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded-md bg-[#f3f4f6]">
+                      <WorkCoverImage src={work.thumbnailUrl} alt={work.title} />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-1 text-sm font-bold">{work.title}</p>
                       <p className="text-[11px] font-bold text-muted">
@@ -320,7 +321,9 @@ function WorkSearchField({
 
       {selected ? (
         <div className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-blueSoft/60 p-3">
-          <div className={`h-14 w-10 shrink-0 rounded-md bg-gradient-to-br ${selected.coverTone}`} />
+          <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-[#f3f4f6]">
+            <WorkCoverImage src={selected.thumbnailUrl} alt={selected.title} />
+          </div>
           <div className="min-w-0 flex-1">
             <p className="line-clamp-1 text-sm font-black">{selected.title}</p>
             <p className="mt-0.5 text-xs font-bold text-muted">

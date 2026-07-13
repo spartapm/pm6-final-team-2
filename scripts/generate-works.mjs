@@ -254,16 +254,14 @@ for (let i = 0; i < workRows.length; i += 1) {
     ?? (ageBy.get(cid) ?? [])[0];
   const ageRating = ageKr?.rating || undefined;
 
-  const h = parseInt(crypto.createHash("md5").update(cid).digest("hex").slice(0, 8), 16);
-
   works.push({
     id: cid,
     title,
     type: wtype,
     thumbnailUrl: thumb,
     coverTone: tones[i % tones.length],
-    rating: Math.round((3.5 + (h % 15) / 10) * 10) / 10,
-    ratingCount: 200 + (h % 5000),
+    rating: 0,
+    ratingCount: 0,
     genres: uniqueGenres,
     tags: uniqueTags,
     overview: summary || `${title}에 대한 정보가 준비 중입니다.`,
