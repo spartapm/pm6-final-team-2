@@ -16,12 +16,12 @@ export function buildRatingStatsMap(reviews: Review[]): Map<string, WorkRatingSt
   }
 
   const out = new Map<string, WorkRatingStats>();
-  for (const [workId, { sum, count }] of acc) {
+  Array.from(acc.entries()).forEach(([workId, { sum, count }]) => {
     out.set(workId, {
       average: Math.round((sum / count) * 10) / 10,
       count,
     });
-  }
+  });
   return out;
 }
 
