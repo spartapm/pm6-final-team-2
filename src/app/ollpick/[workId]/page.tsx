@@ -2,20 +2,27 @@
 
 import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import AppShell from "@/components/AppShell";
 import WorkThumbnail from "@/components/WorkThumbnail";
-import { showToast } from "@/components/Toast";
+import { showLoginRequired, showToast } from "@/components/Toast";
 import { agreePick } from "@/lib/store";
+import {
+  trackAppError,
+  trackOllpickRecommendClick,
+  trackReasonMoreClick,
+  trackRecommendAgreeStart,
+  trackRecommendAgreeSubmit,
+} from "@/lib/analytics";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, works } from "@/lib/works";
-import type { Ollpick, Work } from "@/lib/types";
+import type { Ollpick, Work, WorkStatus } from "@/lib/types";
 
 export default function UserRecDetailPage() {
   const params = useParams<{ workId: string }>();
   const router = useRouter();
-  const { state } = useAllbluState();
-  const baseWork = getWork(params.workId);
+  const { state, worksRevision } = useAllbluState();
+  const baseWork = useMemo(() => getWork(params.workId), [params.workId, worksRevision]);
 
   const user = state.users.find((item) => item.id === state.currentUserId);
   const statuses = user ? state.workStatuses[user.id] ?? {} : {};
@@ -23,16 +30,20 @@ export default function UserRecDetailPage() {
   const watchedWorks = useMemo(() => {
     if (!user) return [];
     return works.filter((work) => ["WATCHING", "DONE"].includes(statuses[work.id] ?? ""));
-  }, [statuses, user]);
+  }, [statuses, user, worksRevision]);
 
-  const canAgree = watchedWorks.length > 0;
+  /** 한 번에 하나의 동의 입력창만 열림 */
+  const [agreePickId, setAgreePickId] = useState<string | null>(null);
+
+  const isEligibleStatus = (workId: string) =>
+    ["WATCHING", "DONE"].includes(statuses[workId] ?? "");
 
   const relatedPicks = useMemo(() => {
     if (!baseWork) return [] as Ollpick[];
     return state.picks
       .filter((pick) => pick.baseWorkId === baseWork.id)
       .sort((a, b) => b.agreeUserIds.length - a.agreeUserIds.length);
-  }, [baseWork, state.picks]);
+  }, [baseWork, state.picks, worksRevision]);
 
   const recommendationRows = useMemo(() => {
     if (!baseWork) return [] as { work: Work; pick: Ollpick }[];
@@ -47,10 +58,10 @@ export default function UserRecDetailPage() {
 
   if (!baseWork) notFound();
 
-  /** 클릭 시 작성 페이지로 전환 (모달 X) */
-  const openWrite = (recommendedId = "") => {
+  /** 클릭 시 작성 페이지로 전환 (모달 X) — 동의하기와 경로 완전 분리 */
+  const openWrite = () => {
     if (!user) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("recommend_write");
       return;
     }
     if (!watchedWorks.length) {
@@ -62,7 +73,6 @@ export default function UserRecDetailPage() {
       return;
     }
     const paramsQs = new URLSearchParams({ base: baseWork.id });
-    if (recommendedId) paramsQs.set("recommended", recommendedId);
     router.push(`/ollpick/write?${paramsQs.toString()}`);
   };
 
@@ -70,8 +80,8 @@ export default function UserRecDetailPage() {
     <AppShell>
       <div className="px-5 py-6 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-          {/* Left: 기준작 */}
-          <aside className="lg:sticky lg:top-24 lg:self-start">
+          {/* Left: 기준작 정보만 (작성 CTA는 우측으로 분리 — sticky 오클릭 방지) */}
+          <aside className="lg:sticky lg:top-24 lg:z-0 lg:self-start">
             <div className="mx-auto w-full max-w-[200px]">
               <WorkThumbnail
                 work={baseWork}
@@ -88,34 +98,45 @@ export default function UserRecDetailPage() {
               <br />
               이런 작품들은 어떠세요.
             </p>
-            <button
-              type="button"
-              onClick={() => openWrite()}
-              className="btn-primary mt-5 h-11 w-full text-sm"
-            >
-              + 내 추천 작성하기
-            </button>
             <Link
               href="/ollpick"
-              className="mt-3 block text-center text-xs font-bold text-muted hover:text-brand"
+              className="mt-5 block text-center text-xs font-bold text-muted hover:text-brand"
             >
               올블픽 홈으로
             </Link>
           </aside>
 
-          {/* Right: 추천 목록 */}
-          <section className="space-y-5">
+          {/* Right: 추천 목록 + 작성 CTA */}
+          <section className="relative z-10 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-bold text-muted">이 작품으로 이어지는 추천</p>
+              <button
+                type="button"
+                onClick={openWrite}
+                className="btn-primary h-10 shrink-0 px-4 text-sm"
+              >
+                + 내 추천 작성하기
+              </button>
+            </div>
+
             {recommendationRows.length ? (
               recommendationRows.map(({ work, pick }) => (
                 <RecommendationBlock
-                  key={`${pick.id}-${work.id}`}
+                  key={pick.id}
                   baseTitle={baseWork.title}
                   work={work}
                   pick={pick}
                   userId={user?.id}
                   status={user ? statuses[work.id] : undefined}
-                  canAgree={canAgree}
-                  onWrite={() => openWrite(work.id)}
+                  canAgree={
+                    isEligibleStatus(pick.baseWorkId) &&
+                    isEligibleStatus(pick.recommendedWorkId)
+                  }
+                  agreeOpen={agreePickId === pick.id}
+                  onOpenAgree={() => setAgreePickId(pick.id)}
+                  onCloseAgree={() =>
+                    setAgreePickId((current) => (current === pick.id ? null : current))
+                  }
                 />
               ))
             ) : (
@@ -123,7 +144,7 @@ export default function UserRecDetailPage() {
                 <p className="font-black">아직 추천한 작품이 없어요</p>
                 <button
                   type="button"
-                  onClick={() => openWrite()}
+                  onClick={openWrite}
                   className="btn-primary mt-4 h-11 px-6 text-sm"
                 >
                   + 첫 추천 작성하기
@@ -144,21 +165,23 @@ function RecommendationBlock({
   userId,
   status,
   canAgree,
-  onWrite,
+  agreeOpen,
+  onOpenAgree,
+  onCloseAgree,
 }: {
   baseTitle: string;
   work: Work;
   pick: Ollpick;
   userId?: string;
-  status?: import("@/lib/types").WorkStatus;
+  status?: WorkStatus;
   canAgree: boolean;
-  onWrite: () => void;
+  agreeOpen: boolean;
+  onOpenAgree: () => void;
+  onCloseAgree: () => void;
 }) {
   const [openReasons, setOpenReasons] = useState(false);
-  const [agreeOpen, setAgreeOpen] = useState(false);
   const [reason, setReason] = useState("");
 
-  /** 이유글 정렬 = 최근 작성한 글 최상단 */
   const reasons = useMemo(
     () =>
       [...pick.reasons].sort(
@@ -170,9 +193,26 @@ function RecommendationBlock({
   const alreadyAgreed = userId ? pick.agreeUserIds.includes(userId) : false;
   const particle = endsWithBatchim(work.title) ? "을" : "를";
 
-  const beginAgree = () => {
+  const trackClick = (
+    clickTarget: "base_work" | "recommended_work" | "card",
+    setAttribution = false
+  ) => {
+    trackOllpickRecommendClick({
+      recommendId: pick.id,
+      baseWorkId: pick.baseWorkId,
+      recommendedWorkId: pick.recommendedWorkId,
+      surface: "userrec_detail",
+      clickTarget,
+      agreeCount: pick.agreeUserIds.length,
+      setAttribution,
+    });
+  };
+
+  const beginAgree = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (!userId) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("agree");
       return;
     }
     if (!canAgree) {
@@ -183,7 +223,11 @@ function RecommendationBlock({
       showToast("이미 동의한 추천입니다");
       return;
     }
-    setAgreeOpen(true);
+    onOpenAgree();
+    trackRecommendAgreeStart({
+      recommendId: pick.id,
+      surface: "userrec_detail",
+    });
   };
 
   const submitAgree = async () => {
@@ -192,13 +236,23 @@ function RecommendationBlock({
       alert("추천 이유는 10자 이상 200자 이하로 작성해주세요.");
       return;
     }
+    const reasonLength = reason.trim().length;
     const result = await agreePick(pick.id, reason.trim(), userId);
     if (!result.ok) {
       showToast(result.message);
+      trackAppError({
+        errorType: "agree_submit_fail",
+        pageName: "userrec_detail",
+      });
       return;
     }
+    trackRecommendAgreeSubmit({
+      recommendId: pick.id,
+      reasonLength,
+      surface: "userrec_detail",
+    });
     setReason("");
-    setAgreeOpen(false);
+    onCloseAgree();
     setOpenReasons(true);
   };
 
@@ -206,13 +260,20 @@ function RecommendationBlock({
     <article className="rounded-2xl border border-line bg-white p-5">
       <div className="flex gap-4">
         <div className="w-[88px] shrink-0">
-          <WorkThumbnail work={work} userId={userId} status={status} showMeta={false} />
+          <WorkThumbnail
+            work={work}
+            userId={userId}
+            status={status}
+            showMeta={false}
+            onWorkOpen={() => trackClick("recommended_work", true)}
+          />
         </div>
 
         <div className="min-w-0 flex-1">
           <Link
             href={`/works/${work.id}`}
             className="text-lg font-black tracking-tight hover:text-brand"
+            onClick={() => trackClick("recommended_work", true)}
           >
             {work.title}
           </Link>
@@ -229,7 +290,7 @@ function RecommendationBlock({
               type="button"
               disabled={alreadyAgreed}
               onClick={beginAgree}
-              className="rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+              className="relative z-10 rounded-full bg-brand px-4 py-1.5 text-xs font-bold text-white disabled:pointer-events-none disabled:opacity-40"
             >
               {alreadyAgreed ? "동의함" : "+ 동의하기"}
             </button>
@@ -260,14 +321,24 @@ function RecommendationBlock({
         {reasons.length > 2 ? (
           <button
             type="button"
-            onClick={() => setOpenReasons((value) => !value)}
+            onClick={() => {
+              setOpenReasons((value) => {
+                const next = !value;
+                if (next) {
+                  trackReasonMoreClick({
+                    recommendId: pick.id,
+                    surface: "userrec_detail",
+                  });
+                }
+                return next;
+              });
+            }}
             className="mt-3 text-xs font-bold text-muted hover:text-brand"
           >
             {openReasons ? "이유 접기 △" : "이유 더보기 ▽"}
           </button>
         ) : null}
 
-        {/* 동의 = 추천 이유글 작성 (댓글 아님) */}
         {agreeOpen ? (
           <div className="mt-4 rounded-xl border border-line bg-surface p-4">
             <p className="mb-1 text-sm font-black">추천 이유 작성</p>
@@ -287,7 +358,7 @@ function RecommendationBlock({
                 <button
                   type="button"
                   onClick={() => {
-                    setAgreeOpen(false);
+                    onCloseAgree();
                     setReason("");
                   }}
                   className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold"

@@ -31,10 +31,11 @@ type FollowModalTab = "followers" | "following";
 
 export default function UserProfilePage({ profileUserId }: { profileUserId?: string }) {
   const router = useRouter();
-  const { state, ready } = useAllbluState();
+  const { state, ready, worksRevision } = useAllbluState();
   const [tab, setTab] = useState<Tab>("overview");
   const [postsSub, setPostsSub] = useState<PostsSub>("recs");
   const [bioDraft, setBioDraft] = useState<string | null>(null);
+  const [bioEditing, setBioEditing] = useState(false);
   const [followTick, setFollowTick] = useState(0);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -118,11 +119,11 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
 
   const recentAnime = useMemo(
     () => recentWorksByType(statuses, statusTimes, "anime"),
-    [statuses, statusTimes]
+    [statuses, statusTimes, worksRevision]
   );
   const recentWebtoon = useMemo(
     () => recentWorksByType(statuses, statusTimes, "webtoon"),
-    [statuses, statusTimes]
+    [statuses, statusTimes, worksRevision]
   );
 
   const myReviews = useMemo(() => {
@@ -291,7 +292,7 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
         <div className="mx-auto max-w-6xl px-4 py-6 lg:px-10">
           {tab === "overview" && (
             <div className="grid gap-5">
-              {/* 자기소개란 — 공란 가능, 글만 */}
+              {/* 자기소개란 — 기본 읽기 전용, 수정 클릭 시 편집 */}
               <section className="rounded-2xl border border-line bg-white p-5 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h2 className="text-base font-black">자기소개란</h2>
@@ -299,11 +300,19 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                     <button
                       type="button"
                       onClick={() => {
-                        void updateBio(user.id, bio.trim()).then(() => setBioDraft(null));
+                        if (!bioEditing) {
+                          setBioDraft(user.bio ?? "");
+                          setBioEditing(true);
+                          return;
+                        }
+                        void updateBio(user.id, bio.trim()).then(() => {
+                          setBioDraft(null);
+                          setBioEditing(false);
+                        });
                       }}
                       className="rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-white"
                     >
-                      저장
+                      {bioEditing ? "저장" : "수정"}
                     </button>
                   ) : null}
                 </div>
@@ -312,8 +321,13 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                     value={bio}
                     onChange={(e) => setBioDraft(e.target.value)}
                     rows={3}
+                    disabled={!bioEditing}
                     placeholder="공란 가능 / 일단은 글만 작성 가능"
-                    className="w-full resize-none rounded-xl border border-line bg-[#f8fafc] px-4 py-3 text-sm outline-none focus:border-brand"
+                    className={`w-full resize-none rounded-xl border px-4 py-3 text-sm outline-none ${
+                      bioEditing
+                        ? "border-brand bg-white focus:border-brand"
+                        : "cursor-default border-line bg-[#f8fafc] text-ink"
+                    }`}
                   />
                 ) : (
                   <p className="min-h-[4.5rem] whitespace-pre-wrap text-sm text-ink">
@@ -651,15 +665,15 @@ function OverviewPostsPanel({
     <button
       type="button"
       onClick={onOpen}
-      className="rounded-2xl border border-line bg-white p-5 text-left shadow-sm transition hover:border-brand/40"
+      className="flex h-full flex-col items-stretch justify-start rounded-2xl border border-line bg-white p-5 text-left shadow-sm transition hover:border-brand/40"
     >
       <h2 className="mb-4 text-base font-black">{title}</h2>
       {isEmpty ? (
-        <div className="flex min-h-[160px] items-center justify-center rounded-xl border border-dashed border-line bg-[#f8fafc] px-4">
+        <div className="flex min-h-[160px] flex-1 items-center justify-center rounded-xl border border-dashed border-line bg-[#f8fafc] px-4">
           <p className="text-sm font-bold text-muted">{emptyText}</p>
         </div>
       ) : (
-        <div className="grid gap-3">{children}</div>
+        <div className="grid w-full gap-3 self-start">{children}</div>
       )}
     </button>
   );

@@ -4,18 +4,20 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import CarouselNavButton from "@/components/CarouselNavButton";
 import OllpickFeedCard from "@/components/OllpickFeedCard";
 import SectionHeading, { sectionIcons } from "@/components/SectionHeading";
 import WorkCoverImage from "@/components/WorkCoverImage";
 import WorkThumbnail from "@/components/WorkThumbnail";
-import { showToast } from "@/components/Toast";
+import { showLoginRequired, showToast } from "@/components/Toast";
 import { useAllbluState } from "@/lib/useAllbluState";
+import { trackOllpickRecommendClick } from "@/lib/analytics";
 import { getWork, works } from "@/lib/works";
 import type { Ollpick } from "@/lib/types";
 
 export default function OllpickPage() {
   const router = useRouter();
-  const { state } = useAllbluState();
+  const { state, worksRevision } = useAllbluState();
   const topRef = useRef<HTMLDivElement>(null);
 
   const user = state.users.find((item) => item.id === state.currentUserId);
@@ -24,10 +26,9 @@ export default function OllpickPage() {
   const watchedWorks = useMemo(() => {
     if (!user) return [];
     return works.filter((work) => ["WATCHING", "DONE"].includes(statuses[work.id] ?? ""));
-  }, [statuses, user]);
+  }, [statuses, user, worksRevision]);
 
   const hasWatched = watchedWorks.length > 0;
-  const canAgree = hasWatched;
 
   const latestPicks = useMemo(
     () =>
@@ -71,7 +72,7 @@ export default function OllpickPage() {
 
   const openWrite = (baseId = "") => {
     if (!user) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("recommend_write");
       return;
     }
     if (!hasWatched) {
@@ -100,9 +101,11 @@ export default function OllpickPage() {
         <section className="mb-8">
           <h2 className="mb-3 text-lg font-black">✅ 최신 반영 추천</h2>
           <div className="flex items-center gap-2">
-            <CarouselArrow label="이전" onClick={() => scrollTop(-1)}>
-              ‹
-            </CarouselArrow>
+            <CarouselNavButton
+              direction="left"
+              label="이전"
+              onClick={() => scrollTop(-1)}
+            />
             <div
               ref={topRef}
               className="flex min-w-0 flex-1 gap-3 overflow-x-auto pb-2 scrollbar-thin"
@@ -111,9 +114,11 @@ export default function OllpickPage() {
                 <LatestPickCard key={pick.id} pick={pick} userId={user?.id} statuses={statuses} />
               ))}
             </div>
-            <CarouselArrow label="다음" onClick={() => scrollTop(1)}>
-              ›
-            </CarouselArrow>
+            <CarouselNavButton
+              direction="right"
+              label="다음"
+              onClick={() => scrollTop(1)}
+            />
           </div>
         </section>
 
@@ -136,7 +141,6 @@ export default function OllpickPage() {
                     pick={pick}
                     userId={user?.id}
                     statuses={statuses}
-                    canAgree={canAgree}
                   />
                 ))}
               </div>
@@ -206,11 +210,33 @@ function LatestPickCard({
   const recommended = getWork(pick.recommendedWorkId);
   if (!base || !recommended) return null;
 
+  const trackClick = (
+    clickTarget: "base_work" | "recommended_work" | "card",
+    setAttribution = false
+  ) => {
+    trackOllpickRecommendClick({
+      recommendId: pick.id,
+      baseWorkId: pick.baseWorkId,
+      recommendedWorkId: pick.recommendedWorkId,
+      surface: "ollpick_top",
+      clickTarget,
+      agreeCount: pick.agreeUserIds.length,
+      setAttribution,
+    });
+  };
+
   return (
     <article className="w-[220px] shrink-0 rounded-2xl border border-line bg-white p-3">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <WorkThumbnail work={base} userId={userId} status={statuses[base.id]} compact showMeta={false} />
+          <WorkThumbnail
+            work={base}
+            userId={userId}
+            status={statuses[base.id]}
+            compact
+            showMeta={false}
+            onWorkOpen={() => trackClick("base_work")}
+          />
           <p className="mt-1 line-clamp-1 text-center text-[11px] font-bold">{base.title}</p>
         </div>
         <div>
@@ -220,8 +246,11 @@ function LatestPickCard({
             status={statuses[recommended.id]}
             compact
             showMeta={false}
+            onWorkOpen={() => trackClick("recommended_work", true)}
           />
-          <p className="mt-1 line-clamp-1 text-center text-[11px] font-bold">{recommended.title}</p>
+          <p className="mt-1 line-clamp-1 text-center text-[11px] font-bold">
+            {recommended.title}
+          </p>
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
@@ -232,6 +261,7 @@ function LatestPickCard({
       </div>
       <Link
         href={`/ollpick/${pick.baseWorkId}`}
+        onClick={() => trackClick("card")}
         className="mt-2 block text-center text-[11px] font-bold text-muted hover:text-brand"
       >
         상세 보기
@@ -264,26 +294,5 @@ function StatRow({ label, value }: { label: string; value: string }) {
       <span className="text-muted">{label}</span>
       <span className="font-black">{value}</span>
     </div>
-  );
-}
-
-function CarouselArrow({
-  children,
-  onClick,
-  label,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-xl text-muted hover:bg-search sm:flex"
-    >
-      {children}
-    </button>
   );
 }

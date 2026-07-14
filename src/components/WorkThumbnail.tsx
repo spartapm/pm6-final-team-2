@@ -4,8 +4,13 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { setWorkStatus } from "@/lib/store";
+import {
+  mapWorkStatus,
+  trackArchiveStatusSave,
+  type SaveSurface,
+} from "@/lib/analytics";
 import { statusIconSrc, statusMeta, statusOptions } from "@/lib/works";
-import { showToast } from "./Toast";
+import { showLoginRequired, showToast } from "./Toast";
 import WorkCoverImage from "./WorkCoverImage";
 import type { StatusAction, Work, WorkStatus } from "@/lib/types";
 
@@ -26,6 +31,8 @@ export default function WorkThumbnail({
   href,
   /** Image is not a link — parent card handles navigation. */
   disableLink = false,
+  saveSurface,
+  onWorkOpen,
 }: {
   work: Work;
   status?: WorkStatus;
@@ -37,6 +44,8 @@ export default function WorkThumbnail({
   averageRating?: number;
   href?: string;
   disableLink?: boolean;
+  saveSurface?: SaveSurface;
+  onWorkOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
@@ -87,11 +96,33 @@ export default function WorkThumbnail({
 
   const choose = (code: StatusAction) => {
     if (!userId) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("status_save");
       setOpen(false);
       return;
     }
-    void setWorkStatus(userId, work.id, code === "CANCEL" ? undefined : code);
+    const prev = mapWorkStatus(status);
+    const nextStatus = code === "CANCEL" ? undefined : code;
+    const statusValue =
+      code === "CANCEL" ? ("cancel" as const) : (mapWorkStatus(code) as Exclude<
+        ReturnType<typeof mapWorkStatus>,
+        "none"
+      >);
+    const surface: SaveSurface =
+      saveSurface ?? (metaMode === "library" ? "mylib" : "thumbnail");
+
+    void (async () => {
+      try {
+        await setWorkStatus(userId, work.id, nextStatus);
+        trackArchiveStatusSave({
+          workId: work.id,
+          statusValue,
+          prevStatus: prev,
+          saveSurface: surface,
+        });
+      } catch {
+        showToast("상태 저장에 실패했습니다");
+      }
+    })();
     setOpen(false);
   };
 
@@ -149,7 +180,13 @@ export default function WorkThumbnail({
         {disableLink ? (
           poster
         ) : (
-          <Link href={targetHref} className="block">
+          <Link
+            href={targetHref}
+            className="block"
+            onClick={() => {
+              onWorkOpen?.();
+            }}
+          >
             {poster}
           </Link>
         )}

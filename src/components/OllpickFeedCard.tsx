@@ -3,8 +3,17 @@
 import Link from "next/link";
 import { useState } from "react";
 import WorkThumbnail from "./WorkThumbnail";
-import { showToast } from "./Toast";
+import { showLoginRequired, showToast } from "./Toast";
 import { agreePick } from "@/lib/store";
+import {
+  trackAppError,
+  trackOllpickRecommendClick,
+  trackReasonMoreClick,
+  trackRecommendAgreeStart,
+  trackRecommendAgreeSubmit,
+  type AgreeSurface,
+  type RecommendClickSurface,
+} from "@/lib/analytics";
 import { getWork } from "@/lib/works";
 import { relativeTime } from "@/lib/time";
 import type { Ollpick, WorkStatus } from "@/lib/types";
@@ -13,12 +22,12 @@ export default function OllpickFeedCard({
   pick,
   userId,
   statuses = {},
-  canAgree,
+  surface = "ollpick_list",
 }: {
   pick: Ollpick;
   userId?: string;
   statuses?: Record<string, WorkStatus>;
-  canAgree: boolean;
+  surface?: Extract<RecommendClickSurface, "ollpick_list" | "userrec_detail">;
 }) {
   const [openReasons, setOpenReasons] = useState(false);
   const [agreeOpen, setAgreeOpen] = useState(false);
@@ -29,10 +38,30 @@ export default function OllpickFeedCard({
 
   const latest = pick.reasons[0];
   const alreadyAgreed = userId ? pick.agreeUserIds.includes(userId) : false;
+  const agreeSurface: AgreeSurface = surface;
+  const isEligible = (workId: string) =>
+    ["WATCHING", "DONE"].includes(statuses[workId] ?? "");
+  /** 기준작·추천작(대상작) 모두 보는중/완료여야 동의 가능 */
+  const canAgree = isEligible(pick.baseWorkId) && isEligible(pick.recommendedWorkId);
+
+  const trackClick = (
+    clickTarget: "base_work" | "recommended_work" | "card",
+    setAttribution = false
+  ) => {
+    trackOllpickRecommendClick({
+      recommendId: pick.id,
+      baseWorkId: pick.baseWorkId,
+      recommendedWorkId: pick.recommendedWorkId,
+      surface,
+      clickTarget,
+      agreeCount: pick.agreeUserIds.length,
+      setAttribution,
+    });
+  };
 
   const submitAgree = async () => {
     if (!userId) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("agree");
       return;
     }
     if (!canAgree) {
@@ -44,11 +73,21 @@ export default function OllpickFeedCard({
       alert("인정 이유는 10자 이상 200자 이하로 작성해주세요.");
       return;
     }
+    const reasonLength = reason.trim().length;
     const result = await agreePick(pick.id, reason.trim(), userId);
     if (!result.ok) {
       showToast(result.message);
+      trackAppError({
+        errorType: "agree_submit_fail",
+        pageName: surface === "userrec_detail" ? "userrec_detail" : "ollpick",
+      });
       return;
     }
+    trackRecommendAgreeSubmit({
+      recommendId: pick.id,
+      reasonLength,
+      surface: agreeSurface,
+    });
     setReason("");
     setAgreeOpen(false);
     setOpenReasons(true);
@@ -70,11 +109,19 @@ export default function OllpickFeedCard({
       </div>
 
       <h3 className="mb-4 text-[17px] font-black leading-snug tracking-tight">
-        <Link href={`/ollpick/${base.id}`} className="hover:text-brand">
+        <Link
+          href={`/works/${base.id}`}
+          className="hover:text-brand"
+          onClick={() => trackClick("base_work")}
+        >
           {base.title}
         </Link>{" "}
         봤다면 →{" "}
-        <Link href={`/ollpick/${recommended.id}`} className="text-brand hover:underline">
+        <Link
+          href={`/works/${recommended.id}`}
+          className="text-brand hover:underline"
+          onClick={() => trackClick("recommended_work", true)}
+        >
           {recommended.title}
         </Link>{" "}
         어때요?
@@ -88,6 +135,7 @@ export default function OllpickFeedCard({
             status={statuses[base.id]}
             compact
             showMeta={false}
+            onWorkOpen={() => trackClick("base_work")}
           />
           <p className="mt-1 text-center text-[11px] font-bold text-muted">
             {base.type === "anime" ? "애니" : "웹툰"}
@@ -101,6 +149,7 @@ export default function OllpickFeedCard({
             status={statuses[recommended.id]}
             compact
             showMeta={false}
+            onWorkOpen={() => trackClick("recommended_work", true)}
           />
           <p className="mt-1 text-center text-[11px] font-bold text-muted">
             {recommended.type === "anime" ? "애니" : "웹툰"}
@@ -162,17 +211,25 @@ export default function OllpickFeedCard({
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
-          onClick={() => setOpenReasons((value) => !value)}
+          onClick={() => {
+            setOpenReasons((value) => {
+              const next = !value;
+              if (next) {
+                trackReasonMoreClick({ recommendId: pick.id, surface });
+              }
+              return next;
+            });
+          }}
           className="text-xs font-bold text-muted hover:text-brand"
         >
           {openReasons ? "▲ 이유 접기" : "▼ 이유 더보기"}
         </button>
         <button
           type="button"
-          disabled={!canAgree || alreadyAgreed}
+          disabled={alreadyAgreed}
           onClick={() => {
             if (!userId) {
-              showToast("로그인이 필요한 기능입니다");
+              showLoginRequired("agree");
               return;
             }
             if (!canAgree) {
@@ -180,8 +237,12 @@ export default function OllpickFeedCard({
               return;
             }
             setAgreeOpen(true);
+            trackRecommendAgreeStart({
+              recommendId: pick.id,
+              surface: agreeSurface,
+            });
           }}
-          className="inline-flex items-center gap-1 rounded-full bg-brand px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded-full bg-brand px-4 py-2 text-sm font-bold text-white disabled:pointer-events-none disabled:opacity-40"
         >
           🔥 동의 +{pick.agreeUserIds.length}
         </button>

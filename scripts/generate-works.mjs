@@ -248,7 +248,13 @@ for (let i = 0; i < workRows.length; i += 1) {
     : "";
   const period = formatPeriod(schedule?.start_date, schedule?.end_date);
 
-  const serialDays = [...new Set((serialBy.get(cid) ?? []).map((r) => r.day_name).filter(Boolean))];
+  const serialRows = serialBy.get(cid) ?? [];
+  const serialDayCodes = [
+    ...new Set(serialRows.map((r) => String(r.day_code ?? "").trim().toUpperCase()).filter(Boolean)),
+  ];
+  const serialDays = [
+    ...new Set(serialRows.map((r) => String(r.day_name ?? "").trim()).filter(Boolean)),
+  ];
 
   const ageKr = (ageBy.get(cid) ?? []).find((r) => r.country_code === "KR")
     ?? (ageBy.get(cid) ?? [])[0];
@@ -271,6 +277,7 @@ for (let i = 0; i < workRows.length; i += 1) {
     statusLabel: status,
     ageRating,
     serialDays,
+    serialDayCodes,
     meta: {
       original,
       studio: uniqueCompanies[0] || undefined,

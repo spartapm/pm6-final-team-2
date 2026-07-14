@@ -4,9 +4,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { showToast } from "@/components/Toast";
+import { showLoginRequired, showToast } from "@/components/Toast";
 import WorkCoverImage from "@/components/WorkCoverImage";
 import { addPick } from "@/lib/store";
+import {
+  trackAppError,
+  trackRecommendWriteStart,
+  trackRecommendWriteSubmit,
+} from "@/lib/analytics";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, works } from "@/lib/works";
 import type { Work, WorkStatus } from "@/lib/types";
@@ -21,7 +26,7 @@ const STATUS_LABEL: Record<WorkStatus, string> = {
 function WritePickPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { state, ready } = useAllbluState();
+  const { state, ready, worksRevision } = useAllbluState();
 
   const user = state.users.find((item) => item.id === state.currentUserId);
   const statuses = user ? state.workStatuses[user.id] ?? {} : {};
@@ -29,12 +34,13 @@ function WritePickPageInner() {
   const watchedWorks = useMemo(() => {
     if (!user) return [];
     return works.filter((work) => ["WATCHING", "DONE"].includes(statuses[work.id] ?? ""));
-  }, [statuses, user]);
+  }, [statuses, user, worksRevision]);
 
   const [baseWorkId, setBaseWorkId] = useState("");
   const [recommendedWorkId, setRecommendedWorkId] = useState("");
   const [reason, setReason] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const writeStartSent = useRef(false);
 
   useEffect(() => {
     if (!ready || hydrated) return;
@@ -50,13 +56,18 @@ function WritePickPageInner() {
   useEffect(() => {
     if (!ready) return;
     if (!user) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("recommend_write");
       router.replace("/login");
       return;
     }
     if (hydrated && watchedWorks.length === 0) {
       showToast("본 작품(보는중/완료)을 먼저 등록해주세요");
       router.replace("/ollpick");
+      return;
+    }
+    if (user && hydrated && watchedWorks.length > 0 && !writeStartSent.current) {
+      writeStartSent.current = true;
+      trackRecommendWriteStart();
     }
   }, [ready, user, hydrated, watchedWorks.length, router]);
 
@@ -66,7 +77,7 @@ function WritePickPageInner() {
 
   const save = async () => {
     if (!user) {
-      showToast("로그인이 필요한 기능입니다");
+      showLoginRequired("recommend_write");
       return;
     }
     if (!baseWorkId || !recommendedWorkId) {
@@ -81,6 +92,7 @@ function WritePickPageInner() {
       alert("추천 이유는 10자 이상 200자 이하로 작성해주세요.");
       return;
     }
+    const reasonLength = reason.trim().length;
     const result = await addPick({
       baseWorkId,
       recommendedWorkId,
@@ -90,8 +102,15 @@ function WritePickPageInner() {
     });
     if (!result.ok) {
       alert(result.message);
+      trackAppError({ errorType: "write_submit_fail", pageName: "ollpick_write" });
       return;
     }
+    trackRecommendWriteSubmit({
+      baseWorkId,
+      recommendedWorkId,
+      reasonLength,
+      isDuplicatePair: result.isDuplicatePair,
+    });
     router.push(`/ollpick/${baseWorkId}`);
   };
 

@@ -25,6 +25,8 @@ export type Work = {
   statusLabel: string;
   ageRating?: string;
   serialDays?: string[];
+  /** Google Sheet day_code: MON…SUN | IRREGULAR */
+  serialDayCodes?: string[];
   meta: {
     original?: string;
     studio?: string;

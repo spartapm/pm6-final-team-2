@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
 import { signUp } from "@/lib/auth";
@@ -16,8 +16,11 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  /** 가입 처리 중에는 세션 레이스로 홈 리다이렉트하지 않음 */
+  const submittingRef = useRef(false);
 
   useEffect(() => {
+    if (submittingRef.current) return;
     if (ready && state.currentUserId) {
       router.replace("/");
     }
@@ -32,17 +35,20 @@ export default function SignupPage() {
       setMessage("비밀번호는 20자 이하로 작성해주세요.");
       return;
     }
+    submittingRef.current = true;
     setLoading(true);
     const result = await signUp(email, password, nickname);
     setLoading(false);
     if (!result.ok) {
+      submittingRef.current = false;
       setMessage(result.message);
       return;
     }
-    router.push("/signup/done");
+    // 완료 페이지로만 이동 (홈 리다이렉트 경로 차단)
+    window.location.assign("/signup/done");
   };
 
-  if (!ready || state.currentUserId) {
+  if (!ready || (state.currentUserId && !loading && !submittingRef.current)) {
     return (
       <AppShell>
         <div className="px-6 py-16 text-center text-sm text-muted">이동 중…</div>

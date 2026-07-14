@@ -8,8 +8,8 @@ import SectionHeading, { sectionIcons } from "./SectionHeading";
 import Spinner from "./Spinner";
 import WorkThumbnail from "./WorkThumbnail";
 import {
+  groupOngoingWebtoonsBySerialDay,
   isCompletedStatus,
-  isOngoingStatus,
   topGenresForType,
   worksByType,
 } from "@/lib/works";
@@ -54,7 +54,7 @@ export default function ExplorePage({ type }: { type: WorkType }) {
 }
 
 function ExplorePageInner({ type }: { type: WorkType }) {
-  const { state } = useAllbluState();
+  const { state, worksRevision } = useAllbluState();
   const router = useRouter();
   const pathname = usePathname() ?? (type === "anime" ? "/anime" : "/webtoon");
   const searchParams = useSearchParams();
@@ -78,10 +78,10 @@ function ExplorePageInner({ type }: { type: WorkType }) {
     () => buildRatingStatsMap(state.reviews),
     [state.reviews]
   );
-  const all = worksByType(type);
+  const all = useMemo(() => worksByType(type), [type, worksRevision]);
   const genreFilters = useMemo(
     () => ["전체", ...topGenresForType(type)],
-    [type]
+    [type, worksRevision]
   );
   const isGrid = type === "anime" ? tab === "all" : tab === "done";
 
@@ -108,11 +108,11 @@ function ExplorePageInner({ type }: { type: WorkType }) {
         .slice(0, HOME_CAROUSEL_MAX),
       recent: [...all].slice(0, HOME_CAROUSEL_MAX),
     };
-  }, [all, rankPeriod, type]);
+  }, [all, rankPeriod, type, worksRevision]);
 
-  const webtoonOngoing = useMemo(
-    () => all.filter((work) => isOngoingStatus(work.statusLabel)),
-    [all]
+  const webtoonDaySections = useMemo(
+    () => (type === "webtoon" ? groupOngoingWebtoonsBySerialDay(all) : []),
+    [all, type, worksRevision]
   );
 
   const buildQuery = useCallback(
@@ -351,22 +351,16 @@ function ExplorePageInner({ type }: { type: WorkType }) {
           </div>
         ) : (
           <div className="space-y-5">
-            <PlatformSection
-              title="연재 중 웹툰"
-              icon={sectionIcons.waveOngoing}
-              works={webtoonOngoing.slice(0, 48)}
-              userId={state.currentUserId}
-              statuses={userStatuses}
-              ratingStats={ratingStats}
-            />
-            <PlatformSection
-              title="더 많은 연재작"
-              icon={sectionIcons.fishSchool}
-              works={webtoonOngoing.slice(48, 96)}
-              userId={state.currentUserId}
-              statuses={userStatuses}
-              ratingStats={ratingStats}
-            />
+            {webtoonDaySections.map((section) => (
+              <PlatformSection
+                key={section.code}
+                title={section.label}
+                works={section.works}
+                userId={state.currentUserId}
+                statuses={userStatuses}
+                ratingStats={ratingStats}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -468,19 +462,25 @@ function PlatformSection({
   return (
     <section className="section-card">
       <SectionHeading title={title} icon={icon} className="mb-4" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-8">
-        {works.slice(0, 24).map((work) => (
-          <WorkThumbnail
-            key={work.id}
-            work={work}
-            userId={userId}
-            status={statuses[work.id]}
-            averageRating={ratingStats?.get(work.id)?.average ?? 0}
-            compact
-            metaMode="status"
-          />
-        ))}
-      </div>
+      {works.length ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-8">
+          {works.map((work) => (
+            <WorkThumbnail
+              key={work.id}
+              work={work}
+              userId={userId}
+              status={statuses[work.id]}
+              averageRating={ratingStats?.get(work.id)?.average ?? 0}
+              compact
+              metaMode="status"
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">
+          등록된 작품이 없어요
+        </p>
+      )}
     </section>
   );
 }

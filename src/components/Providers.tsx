@@ -1,7 +1,13 @@
 "use client";
 
 import { AllbluProvider } from "@/lib/useAllbluState";
+import AnalyticsBridge from "./AnalyticsBridge";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <AllbluProvider>{children}</AllbluProvider>;
+  return (
+    <AllbluProvider>
+      <AnalyticsBridge />
+      {children}
+    </AllbluProvider>
+  );
 }

@@ -299,6 +299,8 @@ export async function addPick(input: {
     pickId = created.id as string;
   }
 
+  const isDuplicatePair = Boolean(existing);
+
   const { error: reasonError } = await supabase.from("ollpick_reasons").upsert(
     {
       pick_id: pickId,
@@ -311,7 +313,7 @@ export async function addPick(input: {
   if (reasonError) return { ok: false as const, message: reasonError.message };
 
   window.dispatchEvent(new Event("allblu-state-change"));
-  return { ok: true as const, pickId };
+  return { ok: true as const, pickId, isDuplicatePair };
 }
 
 export async function agreePick(

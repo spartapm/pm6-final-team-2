@@ -5,7 +5,7 @@ import { notFound, useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import WorkThumbnail from "@/components/WorkThumbnail";
-import { showToast } from "@/components/Toast";
+import { showLoginRequired, showToast } from "@/components/Toast";
 import {
   deleteReview,
   hasLikedReview,
@@ -47,7 +47,7 @@ export default function ReviewDetailPage() {
     );
   }
 
-  const requireAuth = () => showToast("로그인이 필요한 기능입니다");
+  const requireAuth = () => showLoginRequired("empathy");
 
   const onLike = async () => {
     if (!userId) {
@@ -61,7 +61,7 @@ export default function ReviewDetailPage() {
 
   const onFollow = async () => {
     if (!userId) {
-      requireAuth();
+      showToast("로그인이 필요한 기능입니다");
       return;
     }
     if (isAuthor) return;

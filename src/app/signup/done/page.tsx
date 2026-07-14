@@ -1,22 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
-import { useAllbluState } from "@/lib/useAllbluState";
+import { clearLocalSession, setForceGuest } from "@/lib/auth";
 
+/**
+ * 회원가입 완료 화면.
+ * - 자동 로그인 없음
+ * - 「로그인」버튼으로만 로그인 페이지 이동
+ */
 export default function SignupDonePage() {
-  const router = useRouter();
-  const { state, ready } = useAllbluState();
-
-  // 혹시 세션이 남아 있으면 홈으로 (정상 플로우는 비로그인)
   useEffect(() => {
-    if (ready && state.currentUserId) {
-      router.replace("/");
-    }
-  }, [ready, state.currentUserId, router]);
+    setForceGuest(true);
+    void clearLocalSession().finally(() => {
+      setForceGuest(true);
+      window.dispatchEvent(new Event("allblu-state-change"));
+    });
+  }, []);
 
   return (
     <AppShell>

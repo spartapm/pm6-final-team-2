@@ -22,7 +22,7 @@ export default function LibraryShelf({
   statuses: Record<string, WorkStatus>;
   statusTimes: Record<string, string>;
 }) {
-  const { state } = useAllbluState();
+  const { state, worksRevision } = useAllbluState();
   const [count, setCount] = useState(PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -41,7 +41,7 @@ export default function LibraryShelf({
           const tb = statusTimes[b.id] ?? "";
           return tb.localeCompare(ta);
         }),
-    [type, statuses, statusTimes]
+    [type, statuses, statusTimes, worksRevision]
   );
 
   useEffect(() => {

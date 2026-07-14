@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import CarouselNavButton from "./CarouselNavButton";
 import SectionHeading from "./SectionHeading";
 import WorkThumbnail from "./WorkThumbnail";
 import type { WorkRatingStats } from "@/lib/ratings";
@@ -92,13 +93,12 @@ export default function SectionCarousel({
       </div>
 
       <div className="flex items-center gap-2 md:gap-3">
-        <CarouselButton
+        <CarouselNavButton
+          direction="left"
           label="이전"
           disabled={page === 0}
           onClick={() => setPage((value) => Math.max(0, value - 1))}
-        >
-          ‹
-        </CarouselButton>
+        />
 
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6 md:gap-4">
           {visible.map((work, index) => (
@@ -114,38 +114,13 @@ export default function SectionCarousel({
           ))}
         </div>
 
-        <CarouselButton
+        <CarouselNavButton
+          direction="right"
           label="다음"
           disabled={page >= pages - 1}
           onClick={() => setPage((value) => Math.min(pages - 1, value + 1))}
-        >
-          ›
-        </CarouselButton>
+        />
       </div>
     </section>
-  );
-}
-
-function CarouselButton({
-  children,
-  disabled,
-  onClick,
-  label,
-}: {
-  children: React.ReactNode;
-  disabled?: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-xl text-muted transition hover:bg-search disabled:opacity-30 sm:flex"
-    >
-      {children}
-    </button>
   );
 }

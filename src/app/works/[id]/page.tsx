@@ -5,17 +5,23 @@ import { notFound, useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import WorkThumbnail from "@/components/WorkThumbnail";
-import { showToast } from "@/components/Toast";
+import { showLoginRequired, showToast } from "@/components/Toast";
 import {
   addReview,
   hasLikedReview,
   likeReview,
-  toggleWorkStatus,
+  setWorkStatus,
 } from "@/lib/store";
+import {
+  mapWorkStatus,
+  trackArchiveStatusSave,
+  trackOllpickRecommendClick,
+  trackPlatformLinkClick,
+} from "@/lib/analytics";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { ratingStatsForWork, buildRatingStatsMap } from "@/lib/ratings";
 import { getWork, statusIconSrc } from "@/lib/works";
-import type { Work, WorkStatus, WorkType } from "@/lib/types";
+import type { Ollpick, Work, WorkStatus, WorkType } from "@/lib/types";
 
 /** 상세 시청상태: 활성 재클릭 시 해제(토글). 활성=brand / 비활성=흰 테두리 */
 const STATUS_BUTTONS: { code: WorkStatus; label: string }[] = [
@@ -28,8 +34,8 @@ const STATUS_BUTTONS: { code: WorkStatus; label: string }[] = [
 export default function WorkDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const work = getWork(params.id);
-  const { state } = useAllbluState();
+  const { state, worksRevision } = useAllbluState();
+  const work = useMemo(() => getWork(params.id), [params.id, worksRevision]);
   const [rating, setRating] = useState(0);
   const [content, setContent] = useState("");
   const [overviewOpen, setOverviewOpen] = useState(false);
@@ -39,7 +45,7 @@ export default function WorkDetailPage() {
   const user = state.users.find((item) => item.id === state.currentUserId);
   const userStatuses = user ? state.workStatuses[user.id] ?? {} : {};
   const userStatus = user ? userStatuses[params.id] : undefined;
-  const workId = work?.id ?? "";
+  const workId = work?.id ?? params.id;
   const activeRecType: WorkType = recType ?? work?.type ?? "anime";
 
   const myReview = user
@@ -55,13 +61,18 @@ export default function WorkDetailPage() {
   );
 
   const recommendations = useMemo(() => {
-    if (!workId) return [];
+    if (!workId) return [] as { work: Work; pick: Ollpick }[];
     return state.picks
       .filter((pick) => pick.baseWorkId === workId)
-      .map((pick) => getWork(pick.recommendedWorkId))
-      .filter((item): item is Work => item != null && item.type === activeRecType)
+      .map((pick) => {
+        const recommended = getWork(pick.recommendedWorkId);
+        return recommended && recommended.type === activeRecType
+          ? { work: recommended, pick }
+          : null;
+      })
+      .filter((item): item is { work: Work; pick: Ollpick } => item != null)
       .slice(0, 6);
-  }, [activeRecType, state.picks, workId]);
+  }, [activeRecType, state.picks, workId, worksRevision]);
 
   const { average: ratingAverage, count: ratingCount } = useMemo(
     () => ratingStatsForWork(state.reviews, workId),
@@ -75,21 +86,40 @@ export default function WorkDetailPage() {
 
   if (!work) notFound();
 
-  const requireAuth = () => {
-    showToast("로그인이 필요한 기능입니다");
+  const requireAuth = (feature: "status_save" | "evaluation_write" | "empathy" | "recommend_write") => {
+    showLoginRequired(feature);
   };
 
   const onStatusClick = (code: WorkStatus) => {
     if (!user) {
-      requireAuth();
+      requireAuth("status_save");
       return;
     }
-    void toggleWorkStatus(user.id, work.id, code);
+    const prev = mapWorkStatus(userStatus);
+    const clearing = userStatus === code;
+    const nextStatus = clearing ? undefined : code;
+    const statusValue = clearing
+      ? ("cancel" as const)
+      : (mapWorkStatus(code) as Exclude<ReturnType<typeof mapWorkStatus>, "none">);
+
+    void (async () => {
+      try {
+        await setWorkStatus(user.id, work.id, nextStatus);
+        trackArchiveStatusSave({
+          workId: work.id,
+          statusValue,
+          prevStatus: prev,
+          saveSurface: "work_detail",
+        });
+      } catch {
+        showToast("상태 저장에 실패했습니다");
+      }
+    })();
   };
 
   const submitReview = async () => {
     if (!user) {
-      requireAuth();
+      requireAuth("evaluation_write");
       return;
     }
     if (myReview) return;
@@ -114,7 +144,7 @@ export default function WorkDetailPage() {
 
   const onLike = async (reviewId: string) => {
     if (!user) {
-      requireAuth();
+      requireAuth("empathy");
       return;
     }
     if (await hasLikedReview(reviewId, user.id)) return;
@@ -259,6 +289,12 @@ export default function WorkDetailPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className={className}
+                        onClick={() =>
+                          trackPlatformLinkClick({
+                            workId: work.id,
+                            platformName: label,
+                          })
+                        }
                       >
                         {inner}
                       </a>
@@ -285,11 +321,11 @@ export default function WorkDetailPage() {
                   onClick={() =>
                     user
                       ? router.push(`/ollpick/write?base=${encodeURIComponent(work.id)}`)
-                      : requireAuth()
+                      : requireAuth("recommend_write")
                   }
                   className="rounded-full bg-brand px-4 py-2 text-xs font-black text-white"
                 >
-                  내 추천 작성하기
+                  작품 추천하기
                 </button>
               </div>
 
@@ -317,7 +353,7 @@ export default function WorkDetailPage() {
 
               {recommendations.length ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6 md:gap-4">
-                  {recommendations.map((item) => (
+                  {recommendations.map(({ work: item, pick }) => (
                     <WorkThumbnail
                       key={item.id}
                       work={item}
@@ -325,21 +361,34 @@ export default function WorkDetailPage() {
                       status={userStatuses[item.id]}
                       averageRating={ratingStats.get(item.id)?.average ?? 0}
                       compact
+                      onWorkOpen={() =>
+                        trackOllpickRecommendClick({
+                          recommendId: pick.id,
+                          baseWorkId: pick.baseWorkId,
+                          recommendedWorkId: pick.recommendedWorkId,
+                          surface: "work_detail_section",
+                          clickTarget: "recommended_work",
+                          agreeCount: pick.agreeUserIds.length,
+                          setAttribution: true,
+                        })
+                      }
                     />
                   ))}
                 </div>
               ) : (
-                <p className="py-8 text-center text-sm text-muted">
-                  아직 추천한 작품이 없어요
-                </p>
+                <div className="px-4 py-10 text-center text-sm font-bold leading-7 text-muted">
+                  <p>아직 첫 추천을 기다리고 있어요</p>
+                  <p>이 작품과 어울리는 작품을 알고 있다면,</p>
+                  <p>첫 추천의 주인공이 되어보세요</p>
+                </div>
               )}
 
-              <div className="mt-5 text-center">
+              <div className="mt-5">
                 <Link
                   href={`/ollpick/${work.id}`}
-                  className="text-sm font-bold text-muted hover:text-brand"
+                  className="block rounded-xl bg-[#eef0ff] py-2.5 text-center text-sm font-bold text-brand transition hover:bg-[#e4e7ff]"
                 >
-                  전체보기 &gt;
+                  이 작품의 올블픽 더보기
                 </Link>
               </div>
             </section>

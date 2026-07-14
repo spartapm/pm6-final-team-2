@@ -5,6 +5,20 @@ import type { User } from "./types";
 
 export type AuthResult = { ok: true; user?: User } | { ok: false; message: string };
 
+/** 회원가입 직후~명시적 로그인 전까지 세션을 무시 (자동로그인 방지) */
+export const FORCE_GUEST_KEY = "allblu_force_guest";
+
+export function setForceGuest(enabled: boolean) {
+  if (typeof window === "undefined") return;
+  if (enabled) sessionStorage.setItem(FORCE_GUEST_KEY, "1");
+  else sessionStorage.removeItem(FORCE_GUEST_KEY);
+}
+
+export function isForceGuest() {
+  if (typeof window === "undefined") return false;
+  return sessionStorage.getItem(FORCE_GUEST_KEY) === "1";
+}
+
 function mapAuthError(message: string) {
   if (message.includes("Invalid login credentials")) {
     return "이메일 또는 비밀번호가 올바르지 않습니다.";
@@ -39,6 +53,8 @@ export async function fetchProfile(userId: string): Promise<User | undefined> {
 
 export async function getSessionUser(): Promise<User | undefined> {
   if (!supabaseConfigured) return undefined;
+  // 가입 완료 후 로그인 유도 구간: 잔여 세션이 있어도 비회원으로 취급
+  if (isForceGuest()) return undefined;
   const { data } = await supabase.auth.getSession();
   const sessionUser = data.session?.user;
   if (!sessionUser) return undefined;
@@ -54,6 +70,17 @@ export async function getSessionUser(): Promise<User | undefined> {
     bio: "",
     badge: "올블루 스타터",
   };
+}
+
+/** 로컬 세션만 제거 (force-guest 플래그는 유지) */
+export async function clearLocalSession() {
+  if (!supabaseConfigured) return;
+  await supabase.auth.signOut({ scope: "local" });
+  for (let i = 0; i < 5; i += 1) {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;
+    await supabase.auth.signOut({ scope: "local" });
+  }
 }
 
 export async function signUp(
@@ -103,8 +130,9 @@ export async function signUp(
     );
   }
 
-  // AUTH-DONE: 자동 로그인 아님. Confirm email OFF면 signUp이 세션을 만들므로 즉시 해제.
-  await supabase.auth.signOut();
+  // AUTH-DONE: 자동 로그인 금지 — 세션 제거 + 강제 게스트
+  setForceGuest(true);
+  await clearLocalSession();
   window.dispatchEvent(new Event("allblu-state-change"));
 
   return { ok: true };
@@ -114,11 +142,17 @@ export async function signIn(email: string, password: string): Promise<AuthResul
   if (!supabaseConfigured) {
     return { ok: false, message: "Supabase가 설정되지 않았습니다." };
   }
+  const keepForceGuestOnFail = isForceGuest();
+  // 명시적 로그인 시에만 게스트 강제 해제
+  setForceGuest(false);
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim().toLowerCase(),
     password,
   });
-  if (error) return { ok: false, message: mapAuthError(error.message) };
+  if (error) {
+    if (keepForceGuestOnFail) setForceGuest(true);
+    return { ok: false, message: mapAuthError(error.message) };
+  }
   const user = data.user ? await fetchProfile(data.user.id) : undefined;
   window.dispatchEvent(new Event("allblu-state-change"));
   return { ok: true, user };
@@ -126,6 +160,7 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 
 export async function signOut() {
   if (!supabaseConfigured) return;
+  setForceGuest(false);
   await supabase.auth.signOut();
   window.dispatchEvent(new Event("allblu-state-change"));
 }

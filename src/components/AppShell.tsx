@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "@/lib/auth";
+import { trackSearchResultView } from "@/lib/analytics";
 import { searchWorks } from "@/lib/works";
 import { useAllbluState } from "@/lib/useAllbluState";
 import type { WorkType } from "@/lib/types";
@@ -21,13 +22,17 @@ const navItems = [
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
-  const { state, ready } = useAllbluState();
+  const { state, ready, worksRevision } = useAllbluState();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"all" | WorkType>("all");
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const lastSearchKey = useRef<string>("");
   const user = state.users.find((item) => item.id === state.currentUserId);
-  const results = useMemo(() => searchWorks(query, scope), [query, scope]);
+  const results = useMemo(
+    () => searchWorks(query, scope),
+    [query, scope, worksRevision]
+  );
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -38,6 +43,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
   }, []);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!searchOpen || !trimmed) {
+      lastSearchKey.current = "";
+      return;
+    }
+    const key = `${scope}:${trimmed}:${results.length}`;
+    if (lastSearchKey.current === key) return;
+    const t = window.setTimeout(() => {
+      lastSearchKey.current = key;
+      trackSearchResultView({
+        categoryFilter: scope,
+        resultCount: results.length,
+      });
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchOpen, query, scope, results.length]);
+
+  const openWorkFromSearch = (workId: string) => {
+    sessionStorage.setItem("allblu_last_entry_source", "search");
+    setQuery("");
+    setSearchOpen(false);
+    router.push(`/works/${workId}`);
+  };
 
   return (
     <div className="flex min-h-[100svh] flex-col bg-white">
@@ -90,11 +120,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <button
                       key={work.id}
                       type="button"
-                      onClick={() => {
-                        setQuery("");
-                        setSearchOpen(false);
-                        router.push(`/works/${work.id}`);
-                      }}
+                      onClick={() => openWorkFromSearch(work.id)}
                       className="flex w-full items-center justify-between px-4 py-3 text-left text-sm hover:bg-blueSoft"
                     >
                       <span className="font-bold">{work.title}</span>

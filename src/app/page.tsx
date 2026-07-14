@@ -5,12 +5,13 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import PickCard from "@/components/PickCard";
 import ReviewCard from "@/components/ReviewCard";
+import CarouselNavButton from "@/components/CarouselNavButton";
 import SectionCarousel from "@/components/SectionCarousel";
 import SectionHeading, { sectionIcons } from "@/components/SectionHeading";
 import { buildRatingStatsMap } from "@/lib/ratings";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, worksByType } from "@/lib/works";
-import type { Ollpick } from "@/lib/types";
+import type { Ollpick, WorkType } from "@/lib/types";
 
 /** 홈 올블픽: 기본 3카드 노출, 좌우로 최대 20카드 (무한스크롤 X) */
 const HOME_PICK_PAGE_SIZE = 3;
@@ -19,10 +20,8 @@ const HOME_PICK_MAX = 20;
 const HOME_RANK_MAX = 20;
 
 export default function HomePage() {
-  const { state } = useAllbluState();
+  const { state, worksRevision } = useAllbluState();
   const userStatuses = state.currentUserId ? state.workStatuses[state.currentUserId] ?? {} : {};
-  const anime = worksByType("anime");
-  const webtoon = worksByType("webtoon");
   const [rankTab, setRankTab] = useState<"anime" | "webtoon">("anime");
 
   const ratingStats = useMemo(
@@ -31,13 +30,18 @@ export default function HomePage() {
   );
 
   const rankWorks = useMemo(
-    () => (rankTab === "anime" ? anime : webtoon).slice(0, HOME_RANK_MAX),
-    [anime, rankTab, webtoon]
+    () => worksByType(rankTab).slice(0, HOME_RANK_MAX),
+    [rankTab, worksRevision]
   );
 
-  const recentPicks = useMemo(
-    () => buildRecentPicks(state.picks).slice(0, HOME_PICK_MAX),
-    [state.picks]
+  const recentAnimePicks = useMemo(
+    () => buildRecentPicks(state.picks, "anime").slice(0, HOME_PICK_MAX),
+    [state.picks, worksRevision]
+  );
+
+  const recentWebtoonPicks = useMemo(
+    () => buildRecentPicks(state.picks, "webtoon").slice(0, HOME_PICK_MAX),
+    [state.picks, worksRevision]
   );
 
   const popularReviews = useMemo(
@@ -65,6 +69,21 @@ export default function HomePage() {
           />
         </section>
 
+        {/* ATF: 방금 올라온 올블픽 (애니 / 웹툰 분리) */}
+        <HomePickCarousel
+          title="방금 올라온 올블픽 애니"
+          picks={recentAnimePicks}
+          userId={state.currentUserId}
+          statuses={userStatuses}
+        />
+        <HomePickCarousel
+          title="방금 올라온 올블픽 웹툰"
+          picks={recentWebtoonPicks}
+          userId={state.currentUserId}
+          statuses={userStatuses}
+        />
+
+        {/* BTF: 인기작 순위 · 인기평가 */}
         <SectionCarousel
           title="인기작 순위 TOP 20"
           icon={sectionIcons.bigWave}
@@ -105,22 +124,18 @@ export default function HomePage() {
             </div>
           )}
         </section>
-
-        <HomePickCarousel
-          picks={recentPicks}
-          userId={state.currentUserId}
-          statuses={userStatuses}
-        />
       </div>
     </AppShell>
   );
 }
 
 function HomePickCarousel({
+  title,
   picks,
   userId,
   statuses,
 }: {
+  title: string;
   picks: Ollpick[];
   userId?: string;
   statuses: Record<string, import("@/lib/types").WorkStatus>;
@@ -140,7 +155,7 @@ function HomePickCarousel({
     <section className="section-card">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <SectionHeading title="방금 올라온 올블픽" icon={sectionIcons.pearlPick} />
+          <SectionHeading title={title} icon={sectionIcons.pearlPick} />
           <p className="mt-1 text-sm text-muted">유저가 직접 연결한 작품 추천이에요</p>
         </div>
         <Link
@@ -157,15 +172,12 @@ function HomePickCarousel({
         </p>
       ) : (
         <div className="flex items-center gap-2 md:gap-3">
-          <button
-            type="button"
-            aria-label="이전"
+          <CarouselNavButton
+            direction="left"
+            label="이전"
             disabled={page === 0}
             onClick={() => setPage((value) => Math.max(0, value - 1))}
-            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-xl text-muted hover:bg-search disabled:opacity-30 sm:flex"
-          >
-            ‹
-          </button>
+          />
 
           <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-3">
             {visible.map((pick) => (
@@ -173,25 +185,28 @@ function HomePickCarousel({
             ))}
           </div>
 
-          <button
-            type="button"
-            aria-label="다음"
+          <CarouselNavButton
+            direction="right"
+            label="다음"
             disabled={page >= pages - 1}
             onClick={() => setPage((value) => Math.min(pages - 1, value + 1))}
-            className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-xl text-muted hover:bg-search disabled:opacity-30 sm:flex"
-          >
-            ›
-          </button>
+          />
         </div>
       )}
     </section>
   );
 }
 
-/** 최신순 올블픽 (유저가 올린 실데이터만, 최대 HOME_PICK_MAX) */
-function buildRecentPicks(picks: Ollpick[]): Ollpick[] {
+/**
+ * 최신순 올블픽 (추천작 타입 기준 분리).
+ * 홈은 애니/웹툰 각각, 올블픽 화면은 통합 유지.
+ */
+function buildRecentPicks(picks: Ollpick[], type: WorkType): Ollpick[] {
   return picks
-    .filter((pick) => getWork(pick.baseWorkId) && getWork(pick.recommendedWorkId))
+    .filter((pick) => {
+      const recommended = getWork(pick.recommendedWorkId);
+      return recommended && recommended.type === type;
+    })
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
     .slice(0, HOME_PICK_MAX);
 }
