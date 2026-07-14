@@ -226,3 +226,24 @@ create policy "ollpick_reasons_delete_own" on public.ollpick_reasons
 drop policy if exists "reviews_like_count_update" on public.reviews;
 create policy "reviews_like_count_update" on public.reviews
   for update to authenticated using (true) with check (true);
+
+-- 타인 마이페이지 시청 상태 조회 (SELECT 정책 우회용 SECURITY DEFINER)
+create or replace function public.get_user_work_statuses(p_user_id uuid)
+returns table (
+  work_id text,
+  status text,
+  updated_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select ws.work_id, ws.status::text, ws.updated_at
+  from public.work_statuses ws
+  where ws.user_id = p_user_id
+  order by ws.updated_at desc nulls last;
+$$;
+
+revoke all on function public.get_user_work_statuses(uuid) from public;
+grant execute on function public.get_user_work_statuses(uuid) to anon, authenticated;

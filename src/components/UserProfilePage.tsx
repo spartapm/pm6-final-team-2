@@ -54,44 +54,19 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
     targetId && state.currentUserId && targetId === state.currentUserId
   );
 
+  // 내 마이페이지: 전역 state의 시청 상태 동기화
   useEffect(() => {
     if (!ready) return;
-    if (!profileUserId) {
-      setProfileUser(sessionUser ?? null);
-      setProfileStatuses(sessionUser ? state.workStatuses[sessionUser.id] ?? {} : {});
-      setProfileStatusTimes(
-        sessionUser ? state.workStatusUpdatedAt?.[sessionUser.id] ?? {} : {}
-      );
-      setProfileLoading(false);
-      return;
-    }
-    if (profileUserId === state.currentUserId && sessionUser) {
-      setProfileUser(sessionUser);
-      setProfileStatuses(state.workStatuses[sessionUser.id] ?? {});
-      setProfileStatusTimes(state.workStatusUpdatedAt?.[sessionUser.id] ?? {});
-      setProfileLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setProfileLoading(true);
-    void (async () => {
-      const profile = await fetchProfile(profileUserId);
-      if (cancelled) return;
-      if (!profile) {
-        setProfileUser(null);
-        setProfileLoading(false);
-        return;
-      }
-      const { statuses, times } = await loadWorkStatuses(profileUserId);
-      if (cancelled) return;
-      setProfileUser(profile);
-      setProfileStatuses(statuses);
-      setProfileStatusTimes(times);
-      setProfileLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const viewingOther =
+      Boolean(profileUserId) && profileUserId !== state.currentUserId;
+    if (viewingOther) return;
+
+    setProfileUser(sessionUser ?? null);
+    setProfileStatuses(sessionUser ? state.workStatuses[sessionUser.id] ?? {} : {});
+    setProfileStatusTimes(
+      sessionUser ? state.workStatusUpdatedAt?.[sessionUser.id] ?? {} : {}
+    );
+    setProfileLoading(false);
   }, [
     ready,
     profileUserId,
@@ -100,6 +75,45 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
     state.workStatuses,
     state.workStatusUpdatedAt,
   ]);
+
+  // 타인 마이페이지: 프로필 + 시청 상태를 DB에서 조회 (전역 state에는 본인 보관함만 있음)
+  useEffect(() => {
+    if (!ready || !profileUserId) return;
+    if (profileUserId === state.currentUserId) return;
+
+    let cancelled = false;
+    setProfileLoading(true);
+    void (async () => {
+      try {
+        const [profile, statusResult] = await Promise.all([
+          fetchProfile(profileUserId),
+          loadWorkStatuses(profileUserId),
+        ]);
+        if (cancelled) return;
+        if (!profile) {
+          setProfileUser(null);
+          setProfileStatuses({});
+          setProfileStatusTimes({});
+          return;
+        }
+        setProfileUser(profile);
+        setProfileStatuses(statusResult.statuses);
+        setProfileStatusTimes(statusResult.times);
+      } catch (error) {
+        console.error("Failed to load other user profile", error);
+        if (!cancelled) {
+          setProfileUser(null);
+          setProfileStatuses({});
+          setProfileStatusTimes({});
+        }
+      } finally {
+        if (!cancelled) setProfileLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, profileUserId, state.currentUserId]);
 
   const user = profileUser;
   const statuses = profileStatuses;

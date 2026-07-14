@@ -3,7 +3,8 @@
 ## 1. SQL 적용
 Supabase Dashboard → SQL Editor에서 [`supabase/schema.sql`](../supabase/schema.sql) 전체를 실행합니다.  
 이미 적용된 DB라면 추가 마이그레이션만 실행:
-- [`supabase/20260713-work-statuses-public-read.sql`](../supabase/20260713-work-statuses-public-read.sql) (타인 마이페이지 보관함 조회)
+- [`supabase/20260713-work-statuses-public-read.sql`](../supabase/20260713-work-statuses-public-read.sql) (타인 마이페이지 보관함 SELECT 정책)
+- [`supabase/20260714-work-statuses-public-rpc.sql`](../supabase/20260714-work-statuses-public-rpc.sql) (타인 시청상태 RPC — **팔로우 유저 보관함 표시에 필요**)
 
 ## 2. Auth 설정 (MVP)
 Authentication → Providers → Email  

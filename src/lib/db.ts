@@ -16,17 +16,47 @@ async function nicknameMap(userIds: string[]) {
 }
 
 export async function loadWorkStatuses(userId: string) {
+  const statuses: Record<string, WorkStatus> = {};
+  const times: Record<string, string> = {};
+
+  const applyRows = (
+    rows: { work_id: string; status: string; updated_at?: string | null }[] | null | undefined
+  ) => {
+    for (const row of rows ?? []) {
+      statuses[row.work_id] = row.status as WorkStatus;
+      if (row.updated_at) times[row.work_id] = row.updated_at;
+    }
+  };
+
+  // 1) 직접 SELECT (공개 SELECT 정책이면 타인 보관함도 조회됨)
   const { data, error } = await supabase
     .from("work_statuses")
     .select("work_id, status, updated_at")
     .eq("user_id", userId);
-  if (error) throw error;
-  const statuses: Record<string, WorkStatus> = {};
-  const times: Record<string, string> = {};
-  for (const row of data ?? []) {
-    statuses[row.work_id as string] = row.status as WorkStatus;
-    times[row.work_id as string] = row.updated_at as string;
+
+  if (error) {
+    console.error("loadWorkStatuses select failed", error);
+  } else if (data?.length) {
+    applyRows(data as { work_id: string; status: string; updated_at?: string | null }[]);
+    return { statuses, times };
   }
+
+  // 2) SELECT가 비었거나 실패한 경우 RPC(SECURITY DEFINER)로 재시도
+  //    own-only RLS면 SELECT가 에러 없이 []를 반환하므로 RPC가 필요함
+  const { data: rpcData, error: rpcError } = await supabase.rpc(
+    "get_user_work_statuses",
+    { p_user_id: userId }
+  );
+
+  if (rpcError) {
+    // RPC 미배포 환경에서는 경고만 — SELECT 결과(빈 객체 가능)를 그대로 반환
+    if (rpcError.code !== "PGRST202") {
+      console.error("get_user_work_statuses RPC failed", rpcError);
+    }
+    return { statuses, times };
+  }
+
+  applyRows(rpcData as { work_id: string; status: string; updated_at?: string | null }[]);
   return { statuses, times };
 }
 
