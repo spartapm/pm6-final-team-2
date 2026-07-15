@@ -9,9 +9,15 @@ const STATUS_ICON_FILES: Record<StatusAction, string> = {
   CANCEL: "Cancel",
 };
 
+/** 메뉴·작품상세용 작은 글리프 아이콘 */
 export function statusIconSrc(code: StatusAction, variant: "brand" | "white" = "brand") {
   const file = STATUS_ICON_FILES[code];
   return variant === "white" ? `/status/${file}-white.png` : `/status/${file}.png`;
+}
+
+/** 썸네일 코너용 원형 상태 배지 (상태 설정 후 표시) */
+export function statusBadgeSrc(code: StatusAction) {
+  return `/status/badge/${STATUS_ICON_FILES[code]}.png`;
 }
 
 export const statusOptions: {

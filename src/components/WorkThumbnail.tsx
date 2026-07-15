@@ -9,7 +9,7 @@ import {
   trackArchiveStatusSave,
   type SaveSurface,
 } from "@/lib/analytics";
-import { statusIconSrc, statusMeta, statusOptions } from "@/lib/works";
+import { statusBadgeSrc, statusIconSrc, statusMeta, statusOptions } from "@/lib/works";
 import { showLoginRequired, showToast } from "./Toast";
 import WorkCoverImage from "./WorkCoverImage";
 import type { StatusAction, Work, WorkStatus } from "@/lib/types";
@@ -199,8 +199,10 @@ export default function WorkThumbnail({
             event.stopPropagation();
             setOpen((value) => !value);
           }}
-          className={`absolute bottom-2 right-2 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white shadow-menu transition-transform duration-200 group-hover/thumb:scale-110 ${
-            open ? "scale-110" : ""
+          className={`absolute bottom-2 right-2 z-20 flex shrink-0 items-center justify-center transition-transform duration-200 group-hover/thumb:scale-110 ${
+            meta
+              ? `h-9 w-9 overflow-hidden rounded-full shadow-menu ${open ? "scale-110" : ""}`
+              : `h-8 w-8 rounded-full bg-brand text-white shadow-menu ${open ? "scale-110" : ""}`
           }`}
           aria-label="상태 설정"
           aria-expanded={open}
@@ -208,9 +210,9 @@ export default function WorkThumbnail({
           {meta ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={statusIconSrc(meta.code as StatusAction, "white")}
+              src={statusBadgeSrc(meta.code as StatusAction)}
               alt=""
-              className="h-4 w-4 object-contain"
+              className="h-full w-full object-cover"
               draggable={false}
             />
           ) : (
