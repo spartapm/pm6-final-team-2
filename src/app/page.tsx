@@ -61,11 +61,11 @@ export default function HomePage() {
         <section className="overflow-hidden rounded-2xl">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/allblu-hero-banner.svg"
+            src="/allblu-hero-banner.jpg"
             alt="ALLBLU — 본 작품, 볼 작품, 다시 보고 싶은 작품 전부 ALLBLU에 모아두세요"
             className="h-auto w-full"
-            width={1200}
-            height={315}
+            width={1024}
+            height={337}
           />
         </section>
 

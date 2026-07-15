@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import WorkThumbnail from "./WorkThumbnail";
-import { trackOllpickRecommendClick, type RecommendClickSurface } from "@/lib/analytics";
+import {
+  buildRecommendedWorkHref,
+  trackOllpickRecommendClick,
+  type RecommendClickSurface,
+} from "@/lib/analytics";
 import { getWork } from "@/lib/works";
 import type { Ollpick, WorkStatus } from "@/lib/types";
 
@@ -28,6 +32,10 @@ export default function PickCard({
     )[0]?.content ?? "";
   const agreeCount = pick.agreeUserIds.length;
   const detailHref = `/ollpick/${pick.baseWorkId}`;
+  const recommendedHref = buildRecommendedWorkHref(recommended.id, {
+    recommendId: pick.id,
+    agreeCount,
+  });
 
   const trackClick = (
     clickTarget: "base_work" | "recommended_work" | "card",
@@ -77,12 +85,13 @@ export default function PickCard({
             userId={userId}
             status={statuses[recommended.id]}
             showMeta={false}
+            href={recommendedHref}
             onWorkOpen={() => trackClick("recommended_work", true)}
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <Link
-            href={`/works/${recommended.id}`}
+            href={recommendedHref}
             className="line-clamp-2 text-[15px] font-black leading-snug text-ink hover:text-brand"
             onClick={() => trackClick("recommended_work", true)}
           >

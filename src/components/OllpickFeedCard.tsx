@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import WorkThumbnail from "./WorkThumbnail";
-import { trackOllpickRecommendClick, type RecommendClickSurface } from "@/lib/analytics";
+import {
+  buildRecommendedWorkHref,
+  trackOllpickRecommendClick,
+  type RecommendClickSurface,
+} from "@/lib/analytics";
 import { getWork } from "@/lib/works";
 import { relativeTime } from "@/lib/time";
 import type { Ollpick, WorkStatus } from "@/lib/types";
@@ -34,6 +38,10 @@ export default function OllpickFeedCard({
   )[0];
   const agreeCount = pick.agreeUserIds.length;
   const detailHref = `/ollpick/${pick.baseWorkId}`;
+  const recommendedHref = buildRecommendedWorkHref(recommended.id, {
+    recommendId: pick.id,
+    agreeCount,
+  });
 
   const trackClick = (
     clickTarget: "base_work" | "recommended_work" | "card",
@@ -78,7 +86,7 @@ export default function OllpickFeedCard({
         </Link>{" "}
         봤다면 →{" "}
         <Link
-          href={`/works/${recommended.id}`}
+          href={recommendedHref}
           className="text-brand hover:underline"
           onClick={() => trackClick("recommended_work", true)}
         >
@@ -112,6 +120,7 @@ export default function OllpickFeedCard({
             status={statuses[recommended.id]}
             compact
             showMeta={false}
+            href={recommendedHref}
             onWorkOpen={() => trackClick("recommended_work", true)}
           />
           <p className="mt-1.5 line-clamp-2 text-center text-[12px] font-black leading-snug">

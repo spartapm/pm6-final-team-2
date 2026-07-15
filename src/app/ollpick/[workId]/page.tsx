@@ -8,9 +8,9 @@ import WorkThumbnail from "@/components/WorkThumbnail";
 import { showLoginRequired, showToast } from "@/components/Toast";
 import { agreePick } from "@/lib/store";
 import {
+  buildRecommendedWorkHref,
   trackAppError,
   trackOllpickRecommendClick,
-  trackReasonMoreClick,
   trackRecommendAgreeStart,
   trackRecommendAgreeSubmit,
 } from "@/lib/analytics";
@@ -242,7 +242,7 @@ function RecommendationBlock({
       showToast(result.message);
       trackAppError({
         errorType: "agree_submit_fail",
-        pageName: "userrec_detail",
+        pageName: "ollpick",
       });
       return;
     }
@@ -256,6 +256,11 @@ function RecommendationBlock({
     setOpenReasons(true);
   };
 
+  const recommendedHref = buildRecommendedWorkHref(work.id, {
+    recommendId: pick.id,
+    agreeCount: pick.agreeUserIds.length,
+  });
+
   return (
     <article className="rounded-2xl border border-line bg-white p-5">
       <div className="flex gap-4">
@@ -265,13 +270,14 @@ function RecommendationBlock({
             userId={userId}
             status={status}
             showMeta={false}
+            href={recommendedHref}
             onWorkOpen={() => trackClick("recommended_work", true)}
           />
         </div>
 
         <div className="min-w-0 flex-1">
           <Link
-            href={`/works/${work.id}`}
+            href={recommendedHref}
             className="text-lg font-black tracking-tight hover:text-brand"
             onClick={() => trackClick("recommended_work", true)}
           >
@@ -321,18 +327,7 @@ function RecommendationBlock({
         {reasons.length > 2 ? (
           <button
             type="button"
-            onClick={() => {
-              setOpenReasons((value) => {
-                const next = !value;
-                if (next) {
-                  trackReasonMoreClick({
-                    recommendId: pick.id,
-                    surface: "userrec_detail",
-                  });
-                }
-                return next;
-              });
-            }}
+            onClick={() => setOpenReasons((value) => !value)}
             className="mt-3 text-xs font-bold text-muted hover:text-brand"
           >
             {openReasons ? "이유 접기 △" : "이유 더보기 ▽"}

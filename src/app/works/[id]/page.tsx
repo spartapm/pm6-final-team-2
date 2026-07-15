@@ -13,6 +13,7 @@ import {
   setWorkStatus,
 } from "@/lib/store";
 import {
+  buildRecommendedWorkHref,
   mapWorkStatus,
   trackArchiveStatusSave,
   trackOllpickRecommendClick,
@@ -361,6 +362,10 @@ export default function WorkDetailPage() {
                       status={userStatuses[item.id]}
                       averageRating={ratingStats.get(item.id)?.average ?? 0}
                       compact
+                      href={buildRecommendedWorkHref(item.id, {
+                        recommendId: pick.id,
+                        agreeCount: pick.agreeUserIds.length,
+                      })}
                       onWorkOpen={() =>
                         trackOllpickRecommendClick({
                           recommendId: pick.id,

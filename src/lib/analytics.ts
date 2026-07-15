@@ -104,9 +104,23 @@ export function mapWorkStatus(status?: WorkStatus | null): StatusValue | "none" 
   return map[status];
 }
 
+function normalizeAttribution(input: Partial<Attribution> | null | undefined): Attribution | null {
+  const recommend_id = String(input?.recommend_id ?? "").trim();
+  const recommended_work_id = String(input?.recommended_work_id ?? "").trim();
+  const agree_count = Number(input?.agree_count);
+  if (!recommend_id || !recommended_work_id || !Number.isFinite(agree_count)) return null;
+  return {
+    recommend_id,
+    recommended_work_id,
+    agree_count: Math.max(0, Math.floor(agree_count)),
+  };
+}
+
 export function setRecommendAttribution(input: Attribution) {
   if (!canTrack()) return;
-  sessionStorage.setItem(ATTR_KEY, JSON.stringify(input));
+  const normalized = normalizeAttribution(input);
+  if (!normalized) return;
+  sessionStorage.setItem(ATTR_KEY, JSON.stringify(normalized));
 }
 
 export function getRecommendAttribution(): Attribution | null {
@@ -114,7 +128,7 @@ export function getRecommendAttribution(): Attribution | null {
   try {
     const raw = sessionStorage.getItem(ATTR_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as Attribution;
+    return normalizeAttribution(JSON.parse(raw) as Partial<Attribution>);
   } catch {
     return null;
   }
@@ -123,6 +137,44 @@ export function getRecommendAttribution(): Attribution | null {
 export function clearRecommendAttribution() {
   if (!canTrack()) return;
   sessionStorage.removeItem(ATTR_KEY);
+}
+
+/** 추천작 상세 링크 — 새 탭에서도 귀속값이 유지되도록 쿼리로도 전달 */
+export function buildRecommendedWorkHref(
+  workId: string,
+  attribution: { recommendId: string; agreeCount: number }
+) {
+  const params = new URLSearchParams({
+    from_recommend: attribution.recommendId,
+    agree_count: String(Math.max(0, Math.floor(attribution.agreeCount))),
+  });
+  return `/works/${workId}?${params.toString()}`;
+}
+
+function readAttributionFromUrl(workId: string | null): Attribution | null {
+  if (!canTrack() || !workId) return null;
+  const params = new URLSearchParams(window.location.search);
+  const recommend_id = params.get("from_recommend");
+  if (!recommend_id) return null;
+  const rawAc = params.get("agree_count");
+  const parsed = rawAc == null || rawAc === "" ? 0 : Number(rawAc);
+  return normalizeAttribution({
+    recommend_id,
+    recommended_work_id: workId,
+    agree_count: Number.isFinite(parsed) ? parsed : 0,
+  });
+}
+
+function stripAttributionParamsFromUrl() {
+  if (!canTrack()) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("from_recommend") && !url.searchParams.has("agree_count")) {
+    return;
+  }
+  url.searchParams.delete("from_recommend");
+  url.searchParams.delete("agree_count");
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState(window.history.state, "", next);
 }
 
 function pageTypeToEntrySource(pageType: PageType): EntrySource {
@@ -174,9 +226,10 @@ export function resolvePageContext(pathname: string): {
   if (pathname.startsWith("/ollpick/write")) {
     return { page_type: "ollpick_write", page_id: null, work_id: null };
   }
+  // 작품별 올블픽(`/ollpick/[workId]`) — page_type ollpick + work_id
   if (pathname.startsWith("/ollpick/")) {
     const id = pathname.split("/")[2] ?? null;
-    return { page_type: "userrec_detail", page_id: id, work_id: id };
+    return { page_type: "ollpick", page_id: id, work_id: id };
   }
   if (pathname.startsWith("/ollpick")) {
     return { page_type: "ollpick", page_id: null, work_id: null };
@@ -194,22 +247,33 @@ export function trackPageView(pathname: string) {
   const entryRaw = sessionStorage.getItem(LAST_ENTRY_KEY);
   const entry_source = (entryRaw as EntrySource | null) ?? "direct";
 
-  const attr = getRecommendAttribution();
-  const from_recommend_id =
-    ctx.page_type === "work_detail" &&
-    attr &&
-    attr.recommended_work_id === ctx.work_id
-      ? attr.recommend_id
-      : null;
+  // URL 쿼리(새 탭/직접 진입) → sessionStorage 귀속 복원
+  if (ctx.page_type === "work_detail") {
+    const fromUrl = readAttributionFromUrl(ctx.work_id);
+    if (fromUrl) {
+      setRecommendAttribution(fromUrl);
+      stripAttributionParamsFromUrl();
+    }
+  }
 
-  // 추천 경로가 아닌 작품 상세 진입 시 귀속 해제
+  let attr = getRecommendAttribution();
+
+  // 일반 탐색으로 다른 작품 상세에 진입하면 귀속 해제
   if (
     ctx.page_type === "work_detail" &&
     attr &&
     attr.recommended_work_id !== ctx.work_id
   ) {
     clearRecommendAttribution();
+    attr = null;
   }
+
+  const from_recommend_id =
+    ctx.page_type === "work_detail" &&
+    attr &&
+    attr.recommended_work_id === ctx.work_id
+      ? attr.recommend_id
+      : null;
 
   trackEvent("allblu_page_view", {
     page_type: ctx.page_type,
@@ -240,10 +304,11 @@ export function trackArchiveStatusSave(input: {
     status_value: input.statusValue,
     prev_status: input.prevStatus,
     save_surface: input.saveSurface,
-    from_recommend_id: matched?.recommend_id ?? null,
+    from_recommend_id: matched ? matched.recommend_id : null,
     agree_count: matched ? matched.agree_count : null,
   });
 
+  // 저장 성공 후 귀속 해제 (매칭된 추천 경로 저장만)
   if (matched) clearRecommendAttribution();
 }
 
@@ -267,6 +332,7 @@ export function trackOllpickRecommendClick(input: {
   });
 
   if (input.setAttribution) {
+    // 다른 추천 클릭 시 새 정보로 덮어씀
     setRecommendAttribution({
       recommend_id: input.recommendId,
       recommended_work_id: input.recommendedWorkId,
@@ -310,16 +376,6 @@ export function trackRecommendAgreeStart(input: {
   surface: AgreeSurface;
 }) {
   trackEvent("recommend_agree_start", {
-    recommend_id: input.recommendId,
-    surface: input.surface,
-  });
-}
-
-export function trackReasonMoreClick(input: {
-  recommendId: string;
-  surface: RecommendClickSurface;
-}) {
-  trackEvent("reason_more_click", {
     recommend_id: input.recommendId,
     surface: input.surface,
   });
