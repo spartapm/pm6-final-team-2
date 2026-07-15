@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import PickCard from "@/components/PickCard";
 import ReviewCard from "@/components/ReviewCard";
@@ -11,11 +10,13 @@ import SectionHeading, { sectionIcons } from "@/components/SectionHeading";
 import { buildRatingStatsMap } from "@/lib/ratings";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, worksByType } from "@/lib/works";
-import type { Ollpick, WorkType } from "@/lib/types";
+import type { Ollpick, Review, WorkType } from "@/lib/types";
 
-/** 홈 올블픽: 기본 3카드 노출, 좌우로 최대 20카드 (무한스크롤 X) */
+/** 홈 올블픽·인기평가: 기본 3카드 노출, 좌우로 최대 20카드 (무한스크롤 X) */
 const HOME_PICK_PAGE_SIZE = 3;
 const HOME_PICK_MAX = 20;
+const HOME_REVIEW_PAGE_SIZE = 3;
+const HOME_REVIEW_MAX = 20;
 /** 인기작: 기본 6개, 좌우로 최대 20개 (무한스크롤 X) */
 const HOME_RANK_MAX = 20;
 
@@ -51,7 +52,7 @@ export default function HomePage() {
           if (b.likeCount !== a.likeCount) return b.likeCount - a.likeCount;
           return +new Date(b.createdAt) - +new Date(a.createdAt);
         })
-        .slice(0, 3),
+        .slice(0, HOME_REVIEW_MAX),
     [state.reviews]
   );
 
@@ -101,29 +102,11 @@ export default function HomePage() {
           onTabChange={(id) => setRankTab(id as "anime" | "webtoon")}
         />
 
-        <section className="section-card">
-          <SectionHeading
-            title="인기평가"
-            icon={sectionIcons.starfishRating}
-            className="mb-4"
-          />
-          {popularReviews.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">
-              아직 등록된 평가가 없습니다.
-            </p>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-3">
-              {popularReviews.map((review) => (
-                <ReviewCard
-                  key={review.id}
-                  review={review}
-                  userId={state.currentUserId}
-                  status={userStatuses[review.workId]}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+        <HomeReviewCarousel
+          reviews={popularReviews}
+          userId={state.currentUserId}
+          statuses={userStatuses}
+        />
       </div>
     </AppShell>
   );
@@ -153,17 +136,9 @@ function HomePickCarousel({
 
   return (
     <section className="section-card">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <SectionHeading title={title} icon={sectionIcons.pearlPick} />
-          <p className="mt-1 text-sm text-muted">유저가 직접 연결한 작품 추천이에요</p>
-        </div>
-        <Link
-          href="/ollpick"
-          className="shrink-0 text-sm font-bold text-muted transition hover:text-brand"
-        >
-          전체 보기 &gt;
-        </Link>
+      <div className="mb-4">
+        <SectionHeading title={title} icon={sectionIcons.pearlPick} />
+        <p className="mt-1 text-sm text-muted">유저가 직접 연결한 작품 추천이에요</p>
       </div>
 
       {picks.length === 0 ? (
@@ -209,4 +184,67 @@ function buildRecentPicks(picks: Ollpick[], type: WorkType): Ollpick[] {
     })
     .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
     .slice(0, HOME_PICK_MAX);
+}
+
+function HomeReviewCarousel({
+  reviews,
+  userId,
+  statuses,
+}: {
+  reviews: Review[];
+  userId?: string;
+  statuses: Record<string, import("@/lib/types").WorkStatus>;
+}) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(reviews.length / HOME_REVIEW_PAGE_SIZE));
+  const visible = reviews.slice(
+    page * HOME_REVIEW_PAGE_SIZE,
+    page * HOME_REVIEW_PAGE_SIZE + HOME_REVIEW_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setPage(0);
+  }, [reviews]);
+
+  return (
+    <section className="section-card">
+      <SectionHeading
+        title="인기평가"
+        icon={sectionIcons.starfishRating}
+        className="mb-4"
+      />
+      {reviews.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-muted">
+          아직 등록된 평가가 없습니다.
+        </p>
+      ) : (
+        <div className="flex items-center gap-2 md:gap-3">
+          <CarouselNavButton
+            direction="left"
+            label="이전 인기평가"
+            disabled={page === 0}
+            onClick={() => setPage((value) => Math.max(0, value - 1))}
+          />
+
+          <div className="grid min-w-0 flex-1 gap-4 md:grid-cols-3">
+            {visible.map((review) => (
+              <ReviewCard
+                key={review.id}
+                review={review}
+                userId={userId}
+                status={statuses[review.workId]}
+              />
+            ))}
+          </div>
+
+          <CarouselNavButton
+            direction="right"
+            label="다음 인기평가"
+            disabled={page >= pages - 1}
+            onClick={() => setPage((value) => Math.min(pages - 1, value + 1))}
+          />
+        </div>
+      )}
+    </section>
+  );
 }

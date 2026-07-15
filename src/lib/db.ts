@@ -258,18 +258,22 @@ export async function loadPicks(limit = 200): Promise<Ollpick[]> {
     byPick.set(row.pick_id as string, list);
   }
 
-  return pickRows.map((pick) => {
-    const pickReasons = byPick.get(pick.id as string) ?? [];
-    return {
-      id: pick.id as string,
-      baseWorkId: pick.base_work_id as string,
-      recommendedWorkId: pick.recommended_work_id as string,
-      firstRecommender: pickReasons[pickReasons.length - 1]?.nickname ?? "유저",
-      agreeUserIds: pickReasons.map((r) => r.userId),
-      reasons: pickReasons,
-      createdAt: pick.created_at as string,
-    };
-  });
+  // 추천 이유가 없는 고아 픽은 피드/카드에 노출하지 않음
+  return pickRows
+    .map((pick) => {
+      const pickReasons = byPick.get(pick.id as string) ?? [];
+      return {
+        id: pick.id as string,
+        baseWorkId: pick.base_work_id as string,
+        recommendedWorkId: pick.recommended_work_id as string,
+        firstRecommender: pickReasons[pickReasons.length - 1]?.nickname ?? "유저",
+        firstRecommenderUserId: pickReasons[pickReasons.length - 1]?.userId,
+        agreeUserIds: pickReasons.map((r) => r.userId),
+        reasons: pickReasons,
+        createdAt: pick.created_at as string,
+      };
+    })
+    .filter((pick) => pick.reasons.length > 0);
 }
 
 async function assertEligible(userId: string, workIds: string[]) {
@@ -394,21 +398,39 @@ export async function deleteMyPickReason(
   reasonId: string,
   userId: string
 ) {
-  const { error } = await supabase
-    .from("ollpick_reasons")
-    .delete()
-    .eq("id", reasonId)
-    .eq("pick_id", pickId)
-    .eq("user_id", userId);
-  if (error) throw error;
+  // SECURITY DEFINER RPC: 추천글 삭제 + 남은 이유가 없으면 ollpick 행도 삭제
+  const { error: rpcError } = await supabase.rpc("delete_my_ollpick_reason", {
+    p_pick_id: pickId,
+    p_reason_id: reasonId,
+  });
 
-  const { count } = await supabase
-    .from("ollpick_reasons")
-    .select("id", { count: "exact", head: true })
-    .eq("pick_id", pickId);
-  if ((count ?? 0) === 0) {
-    await supabase.from("ollpicks").delete().eq("id", pickId);
+  if (rpcError) {
+    // RPC 미배포 환경 폴백
+    if (rpcError.code !== "PGRST202") throw rpcError;
+
+    const { error } = await supabase
+      .from("ollpick_reasons")
+      .delete()
+      .eq("id", reasonId)
+      .eq("pick_id", pickId)
+      .eq("user_id", userId);
+    if (error) throw error;
+
+    const { count } = await supabase
+      .from("ollpick_reasons")
+      .select("id", { count: "exact", head: true })
+      .eq("pick_id", pickId);
+    if ((count ?? 0) === 0) {
+      const { error: pickError } = await supabase
+        .from("ollpicks")
+        .delete()
+        .eq("id", pickId);
+      if (pickError) {
+        console.error("Failed to delete orphan ollpick (need RLS/RPC)", pickError);
+      }
+    }
   }
+
   window.dispatchEvent(new Event("allblu-state-change"));
 }
 

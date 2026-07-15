@@ -75,6 +75,8 @@ export type Ollpick = {
   baseWorkId: string;
   recommendedWorkId: string;
   firstRecommender: string;
+  /** firstRecommender 작성자 user id (마이페이지 링크용) */
+  firstRecommenderUserId?: string;
   agreeUserIds: string[];
   reasons: PickReason[];
   createdAt: string;

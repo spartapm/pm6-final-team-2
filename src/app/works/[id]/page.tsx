@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
+import UserNicknameLink from "@/components/UserNicknameLink";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import { showLoginRequired, showToast } from "@/components/Toast";
 import {
@@ -19,6 +20,7 @@ import {
   trackOllpickRecommendClick,
   trackPlatformLinkClick,
 } from "@/lib/analytics";
+import { platformIconSrc } from "@/lib/platformIcons";
 import { useAllbluState } from "@/lib/useAllbluState";
 import { ratingStatsForWork, buildRatingStatsMap } from "@/lib/ratings";
 import { getWork, statusIconSrc } from "@/lib/works";
@@ -265,7 +267,7 @@ export default function WorkDetailPage() {
             <section>
               <h2 className="mb-3 text-base font-black">[해당 작품을 볼 수 있는 곳]</h2>
               {(work.platforms?.length ?? work.platform.length) ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-3">
                   {(
                     work.platforms?.length
                       ? work.platforms
@@ -273,15 +275,25 @@ export default function WorkDetailPage() {
                   ).map((platform) => {
                     const label = platform.name;
                     const href = platform.url;
+                    const iconSrc = platformIconSrc(label);
                     const className =
-                      "inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-2 text-sm font-bold hover:bg-surface";
-                    const inner = (
-                      <>
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand text-[10px] text-white">
-                          {label.slice(0, 1)}
-                        </span>
-                        {label}
-                      </>
+                      "block h-14 w-14 overflow-hidden rounded-xl border border-line bg-white shadow-sm transition hover:opacity-90 sm:h-16 sm:w-16";
+                    const inner = iconSrc ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={iconSrc}
+                        alt={label}
+                        title={label}
+                        className="h-full w-full object-cover"
+                        draggable={false}
+                      />
+                    ) : (
+                      <span
+                        title={label}
+                        className="flex h-full w-full items-center justify-center bg-surface text-sm font-black text-ink"
+                      >
+                        {label.slice(0, 1)}
+                      </span>
                     );
                     return href ? (
                       <a
@@ -289,6 +301,7 @@ export default function WorkDetailPage() {
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
+                        aria-label={label}
                         className={className}
                         onClick={() =>
                           trackPlatformLinkClick({
@@ -300,7 +313,7 @@ export default function WorkDetailPage() {
                         {inner}
                       </a>
                     ) : (
-                      <span key={label} className={className}>
+                      <span key={label} aria-label={label} className={className}>
                         {inner}
                       </span>
                     );
@@ -495,30 +508,36 @@ export default function WorkDetailPage() {
                       key={review.id}
                       className="rounded-2xl border border-line bg-white p-4"
                     >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <UserNicknameLink
+                          userId={review.userId}
+                          className="inline-flex items-center gap-2 text-sm font-bold hover:text-brand"
+                        >
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-search text-[11px]">
+                            {review.nickname.slice(0, 1)}
+                          </span>
+                          {review.nickname}
+                        </UserNicknameLink>
+                        <Link
+                          href={`/reviews/${review.id}`}
+                          className="text-sm font-bold text-yellow-500 hover:underline"
+                        >
+                          ★ {review.rating.toFixed(1)}
+                        </Link>
+                      </div>
                       <Link href={`/reviews/${review.id}`} className="block">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-2 text-sm font-bold">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-search text-[11px]">
-                              {review.nickname.slice(0, 1)}
-                            </span>
-                            {review.nickname}
-                          </span>
-                          <span className="text-sm font-bold text-yellow-500">
-                            ★ {review.rating.toFixed(1)}
-                          </span>
-                        </div>
                         <p className="line-clamp-3 min-h-[60px] text-sm leading-relaxed text-ink/85">
                           {review.content}
                         </p>
                       </Link>
                       <div className="mt-3 flex items-center justify-between text-xs text-muted">
-                        <span>
+                        <Link href={`/reviews/${review.id}`} className="hover:text-brand">
                           {new Date(review.createdAt).toLocaleDateString("ko-KR", {
                             year: "numeric",
                             month: "numeric",
                             day: "numeric",
                           })}
-                        </span>
+                        </Link>
                         <button
                           type="button"
                           onClick={() => void onLike(review.id)}

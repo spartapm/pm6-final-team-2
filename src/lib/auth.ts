@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase, supabaseConfigured } from "./supabase";
+import { validateNickname } from "./nickname";
 import type { User } from "./types";
 
 export type AuthResult = { ok: true; user?: User } | { ok: false; message: string };
@@ -92,8 +93,10 @@ export async function signUp(
     return { ok: false, message: "Supabase가 설정되지 않았습니다." };
   }
   const trimmedEmail = email.trim().toLowerCase();
-  const trimmedNick = nickname.trim();
-  if (!trimmedEmail || !password || !trimmedNick) {
+  const nickCheck = validateNickname(nickname);
+  if (!nickCheck.ok) return { ok: false, message: nickCheck.message };
+  const trimmedNick = nickCheck.value;
+  if (!trimmedEmail || !password) {
     return { ok: false, message: "모든 값을 입력해주세요." };
   }
   if (password.length > 20) {

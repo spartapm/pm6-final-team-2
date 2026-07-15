@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, useParams, useRouter } from "next/navigation";
 import { useMemo, useState, type MouseEvent } from "react";
 import AppShell from "@/components/AppShell";
+import UserNicknameLink from "@/components/UserNicknameLink";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import { showLoginRequired, showToast } from "@/components/Toast";
 import { agreePick } from "@/lib/store";
@@ -313,11 +314,19 @@ function RecommendationBlock({
         <div className="space-y-3">
           {visibleReasons.map((item) => (
             <div key={item.id} className="flex gap-2">
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[10px] font-black text-white">
+              <UserNicknameLink
+                userId={item.userId}
+                className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[10px] font-black text-white"
+              >
                 {item.nickname.slice(0, 1)}
-              </span>
+              </UserNicknameLink>
               <div className="min-w-0">
-                <p className="text-xs font-bold">{item.nickname}</p>
+                <UserNicknameLink
+                  userId={item.userId}
+                  className="text-xs font-bold hover:text-brand"
+                >
+                  {item.nickname}
+                </UserNicknameLink>
                 <p className="mt-0.5 text-sm leading-relaxed text-ink/85">{item.content}</p>
               </div>
             </div>

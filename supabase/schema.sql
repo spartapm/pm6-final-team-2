@@ -247,3 +247,38 @@ $$;
 
 revoke all on function public.get_user_work_statuses(uuid) from public;
 grant execute on function public.get_user_work_statuses(uuid) to anon, authenticated;
+
+-- 추천글 삭제 시 빈 ollpick까지 제거
+create or replace function public.delete_my_ollpick_reason(
+  p_pick_id uuid,
+  p_reason_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not authenticated';
+  end if;
+
+  delete from public.ollpick_reasons
+  where id = p_reason_id
+    and pick_id = p_pick_id
+    and user_id = auth.uid();
+
+  if not found then
+    raise exception 'reason not found or not owned';
+  end if;
+
+  if not exists (
+    select 1 from public.ollpick_reasons where pick_id = p_pick_id
+  ) then
+    delete from public.ollpicks where id = p_pick_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.delete_my_ollpick_reason(uuid, uuid) from public;
+grant execute on function public.delete_my_ollpick_reason(uuid, uuid) to authenticated;

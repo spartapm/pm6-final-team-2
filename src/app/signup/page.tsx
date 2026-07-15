@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import AppShell from "@/components/AppShell";
 import Logo from "@/components/Logo";
 import { signUp } from "@/lib/auth";
+import { NICKNAME_PLACEHOLDER, validateNickname } from "@/lib/nickname";
 import { useAllbluState } from "@/lib/useAllbluState";
 
 export default function SignupPage() {
@@ -31,13 +32,18 @@ export default function SignupPage() {
       setMessage("모든 값을 입력해주세요.");
       return;
     }
+    const nickCheck = validateNickname(nickname);
+    if (!nickCheck.ok) {
+      setMessage(nickCheck.message);
+      return;
+    }
     if (password.length > 20) {
       setMessage("비밀번호는 20자 이하로 작성해주세요.");
       return;
     }
     submittingRef.current = true;
     setLoading(true);
-    const result = await signUp(email, password, nickname);
+    const result = await signUp(email, password, nickCheck.value);
     setLoading(false);
     if (!result.ok) {
       submittingRef.current = false;
@@ -69,11 +75,17 @@ export default function SignupPage() {
               <BadgeFieldIcon />
               <input
                 value={nickname}
+                maxLength={12}
+                autoComplete="nickname"
                 onChange={(event) => {
-                  setNickname(event.target.value);
+                  const next = event.target.value
+                    .replace(/\s/g, "")
+                    .replace(/[^가-힣a-zA-Z0-9]/g, "")
+                    .slice(0, 12);
+                  setNickname(next);
                   setMessage("");
                 }}
-                placeholder="닉네임"
+                placeholder={NICKNAME_PLACEHOLDER}
                 className="w-full bg-transparent text-sm outline-none placeholder:text-muted"
               />
             </label>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import WorkThumbnail from "./WorkThumbnail";
+import UserNicknameLink from "./UserNicknameLink";
 import {
   buildRecommendedWorkHref,
   trackOllpickRecommendClick,
@@ -56,11 +57,19 @@ export default function PickCard({
     <article className="flex min-h-0 min-w-0 flex-col rounded-2xl border border-line bg-white p-4 transition hover:shadow-card">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-black text-white">
+          <UserNicknameLink
+            userId={pick.firstRecommenderUserId}
+            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-black text-white"
+          >
             {pick.firstRecommender.slice(0, 1)}
-          </span>
+          </UserNicknameLink>
           <p className="min-w-0 text-[13px] font-bold leading-snug text-ink line-clamp-2">
-            <span className="text-brand">{pick.firstRecommender}</span>
+            <UserNicknameLink
+              userId={pick.firstRecommenderUserId}
+              className="text-brand hover:underline"
+            >
+              {pick.firstRecommender}
+            </UserNicknameLink>
             님이 「
             <Link
               href={`/works/${base.id}`}

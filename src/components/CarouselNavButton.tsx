@@ -16,9 +16,9 @@ export default function CarouselNavButton({
   className?: string;
 }) {
   const side = direction === "left" ? "left" : "right";
-  const defaultSrc = `/carousel/arrow-${side}-default.png`;
-  const hoverSrc = `/carousel/arrow-${side}-hover.png`;
-  const disabledSrc = `/carousel/arrow-${side}-disabled.png`;
+  const defaultSrc = `/carousel/arrow-${side}-default.svg`;
+  const hoverSrc = `/carousel/arrow-${side}-hover.svg`;
+  const disabledSrc = `/carousel/arrow-${side}-disabled.svg`;
 
   return (
     <button

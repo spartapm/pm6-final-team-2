@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import WorkThumbnail from "./WorkThumbnail";
+import UserNicknameLink from "./UserNicknameLink";
 import { getWork } from "@/lib/works";
 import type { Review, WorkStatus } from "@/lib/types";
 
@@ -32,24 +33,32 @@ export default function ReviewCard({
         />
       </div>
 
-      <Link href={detailHref} className="flex min-w-0 flex-1 flex-col py-0.5">
-        <h3 className="line-clamp-1 text-[15px] font-black text-ink">{work.title}</h3>
-        <p className="mt-1.5 line-clamp-3 flex-1 text-sm leading-relaxed text-muted">
-          {review.content}
-        </p>
-        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted">
-          <span className="inline-flex min-w-0 items-center gap-2 font-bold">
+      <div className="flex min-w-0 flex-1 flex-col py-0.5">
+        <Link href={detailHref} className="min-w-0">
+          <h3 className="line-clamp-1 text-[15px] font-black text-ink">{work.title}</h3>
+          <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted">
+            {review.content}
+          </p>
+        </Link>
+        <div className="mt-auto flex items-center justify-between gap-2 pt-3 text-xs text-muted">
+          <UserNicknameLink
+            userId={review.userId}
+            className="inline-flex min-w-0 items-center gap-2 font-bold hover:text-brand"
+          >
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-search text-[10px] text-ink">
               {review.nickname.slice(0, 1)}
             </span>
             <span className="line-clamp-1">{review.nickname}</span>
-          </span>
-          <span className="inline-flex shrink-0 items-center gap-1 font-bold">
+          </UserNicknameLink>
+          <Link
+            href={detailHref}
+            className="inline-flex shrink-0 items-center gap-1 font-bold hover:text-brand"
+          >
             <HeartIcon />
             공감 {review.likeCount.toLocaleString()}개
-          </span>
+          </Link>
         </div>
-      </Link>
+      </div>
     </article>
   );
 }

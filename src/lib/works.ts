@@ -203,6 +203,37 @@ export function groupOngoingWebtoonsBySerialDay(works: Work[]) {
   }));
 }
 
+/** 연재중 요일 필터 칩: 전체 + 월~일 + 비정기 연재 */
+export const WEBTOON_ONGOING_DAY_FILTERS = [
+  { id: "ALL", label: "전체" },
+  ...WEBTOON_SERIAL_DAY_SECTIONS.map((section) => ({
+    id: section.code,
+    label: section.label,
+  })),
+] as const;
+
+export type WebtoonOngoingDayFilterId =
+  (typeof WEBTOON_ONGOING_DAY_FILTERS)[number]["id"];
+
+/** 연재중 요일 칩 필터 매칭 */
+export function matchesWebtoonOngoingDayFilter(
+  work: Work,
+  filterId: string
+): boolean {
+  if (work.statusLabel !== "연재 중") return false;
+  if (!filterId || filterId === "ALL" || filterId === "전체") return true;
+
+  const codes = resolveSerialDayCodes(work);
+  const hasIrregular = codes.includes("IRREGULAR");
+
+  if (filterId === "IRREGULAR" || filterId === "비정기 연재") {
+    // 요일 미지정 또는 비정기
+    return !codes.length || hasIrregular;
+  }
+
+  return codes.includes(filterId as WebtoonSerialDayCode);
+}
+
 /** 타입별 장르 빈도순 (필터 칩용) */
 export function topGenresForType(type: WorkType, limit = 12) {
   const counts = new Map<string, number>();

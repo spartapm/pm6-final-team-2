@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import WorkThumbnail from "./WorkThumbnail";
+import UserNicknameLink from "./UserNicknameLink";
 import {
   buildRecommendedWorkHref,
   trackOllpickRecommendClick,
@@ -62,10 +63,18 @@ export default function OllpickFeedCard({
     <article className="rounded-2xl border border-line bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-black text-white">
+          <UserNicknameLink
+            userId={pick.firstRecommenderUserId}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-black text-white"
+          >
             {pick.firstRecommender.slice(0, 1)}
-          </span>
-          <span className="truncate text-sm font-bold">{pick.firstRecommender}</span>
+          </UserNicknameLink>
+          <UserNicknameLink
+            userId={pick.firstRecommenderUserId}
+            className="truncate text-sm font-bold hover:text-brand"
+          >
+            {pick.firstRecommender}
+          </UserNicknameLink>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-xs font-bold text-muted">
           <span className="inline-flex items-center gap-1">
@@ -95,38 +104,36 @@ export default function OllpickFeedCard({
         어때요?
       </h3>
 
-      <div className="mb-4 flex items-start justify-center gap-2 sm:gap-3">
-        <div className="w-[88px] shrink-0 sm:w-[100px]">
+      <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
+        <div className="mx-auto w-full max-w-[200px]">
           <WorkThumbnail
             work={base}
             userId={userId}
             status={statuses[base.id]}
-            compact
             showMeta={false}
             onWorkOpen={() => trackClick("base_work")}
           />
-          <p className="mt-1.5 line-clamp-2 text-center text-[12px] font-black leading-snug">
+          <p className="mt-2 line-clamp-2 text-center text-sm font-black leading-snug">
             {base.title}
           </p>
-          <p className="mt-0.5 text-center text-[10px] font-bold text-muted">
+          <p className="mt-0.5 text-center text-xs font-bold text-muted">
             {base.type === "anime" ? "애니" : "웹툰"}
           </p>
         </div>
-        <div className="pt-10 text-base font-black text-brand sm:pt-12">→</div>
-        <div className="w-[88px] shrink-0 sm:w-[100px]">
+        <div className="shrink-0 text-xl font-black text-brand sm:text-2xl">→</div>
+        <div className="mx-auto w-full max-w-[200px]">
           <WorkThumbnail
             work={recommended}
             userId={userId}
             status={statuses[recommended.id]}
-            compact
             showMeta={false}
             href={recommendedHref}
             onWorkOpen={() => trackClick("recommended_work", true)}
           />
-          <p className="mt-1.5 line-clamp-2 text-center text-[12px] font-black leading-snug">
+          <p className="mt-2 line-clamp-2 text-center text-sm font-black leading-snug">
             {recommended.title}
           </p>
-          <p className="mt-0.5 text-center text-[10px] font-bold text-muted">
+          <p className="mt-0.5 text-center text-xs font-bold text-muted">
             {recommended.type === "anime" ? "애니" : "웹툰"}
           </p>
         </div>
@@ -140,10 +147,18 @@ export default function OllpickFeedCard({
       {latest ? (
         <div className="mb-3 rounded-xl bg-surface p-3">
           <div className="mb-2 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-[10px] font-black text-white">
+            <UserNicknameLink
+              userId={latest.userId}
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-[10px] font-black text-white"
+            >
               {latest.nickname.slice(0, 1)}
-            </span>
-            <span className="text-xs font-bold">{latest.nickname}</span>
+            </UserNicknameLink>
+            <UserNicknameLink
+              userId={latest.userId}
+              className="text-xs font-bold hover:text-brand"
+            >
+              {latest.nickname}
+            </UserNicknameLink>
           </div>
           <p className="text-sm leading-relaxed text-ink/85">{latest.content}</p>
         </div>
