@@ -194,12 +194,12 @@ export async function buildWorksCatalogFromSheets(): Promise<Work[]> {
     const genres = (genreLinkBy.get(cid) ?? [])
       .map((link) => genreById.get(link.genre_id))
       .filter((name): name is string => Boolean(name));
-    const uniqueGenres = [...new Set(genres)];
+    const uniqueGenres = Array.from(new Set(genres));
 
     const tags = (tagLinkBy.get(cid) ?? [])
       .map((link) => tagById.get(link.tag_id))
       .filter((name): name is string => Boolean(name));
-    const uniqueTags = [...new Set(tags)];
+    const uniqueTags = Array.from(new Set(tags));
 
     const platforms: WorkPlatform[] = [];
     const seenPlatform = new Set<string>();
@@ -236,23 +236,23 @@ export async function buildWorksCatalogFromSheets(): Promise<Work[]> {
     const companies = (companyLinkBy.get(cid) ?? [])
       .map((link) => companyById.get(link.company_id))
       .filter((name): name is string => Boolean(name));
-    const uniqueCompanies = [...new Set(companies)];
+    const uniqueCompanies = Array.from(new Set(companies));
 
     const schedule = scheduleBy.get(cid);
     const episodes = schedule?.total_count ? `${schedule.total_count}화` : "";
     const period = formatPeriod(schedule?.start_date, schedule?.end_date);
 
     const serialRows = serialBy.get(cid) ?? [];
-    const serialDayCodes = [
-      ...new Set(
+    const serialDayCodes = Array.from(
+      new Set(
         serialRows
           .map((r) => String(r.day_code ?? "").trim().toUpperCase())
           .filter(Boolean)
-      ),
-    ];
-    const serialDays = [
-      ...new Set(serialRows.map((r) => String(r.day_name ?? "").trim()).filter(Boolean)),
-    ];
+      )
+    );
+    const serialDays = Array.from(
+      new Set(serialRows.map((r) => String(r.day_name ?? "").trim()).filter(Boolean))
+    );
 
     const ageKr =
       (ageBy.get(cid) ?? []).find((r) => r.country_code === "KR") ??

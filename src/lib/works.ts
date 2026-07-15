@@ -158,12 +158,12 @@ export function resolveSerialDayCodes(work: Work): WebtoonSerialDayCode[] {
   const fromCodes = (work.serialDayCodes ?? [])
     .map((code) => String(code).trim().toUpperCase())
     .filter((code): code is WebtoonSerialDayCode => VALID_DAY_CODES.has(code));
-  if (fromCodes.length) return [...new Set(fromCodes)];
+  if (fromCodes.length) return Array.from(new Set(fromCodes));
 
   const fromNames = (work.serialDays ?? [])
     .map((name) => DAY_NAME_TO_CODE[String(name).trim()])
     .filter((code): code is WebtoonSerialDayCode => Boolean(code));
-  return [...new Set(fromNames)];
+  return Array.from(new Set(fromNames));
 }
 
 /**
