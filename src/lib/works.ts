@@ -15,9 +15,9 @@ export function statusIconSrc(code: StatusAction, variant: "brand" | "white" = "
   return variant === "white" ? `/status/${file}-white.png` : `/status/${file}.png`;
 }
 
-/** 썸네일 코너용 원형 상태 배지 (상태 설정 후 표시) */
+/** 썸네일 코너용 원형 상태 배지 (asset/상태 버튼/썸네일 상태변경 *_set.svg) */
 export function statusBadgeSrc(code: StatusAction) {
-  return `/status/badge/${STATUS_ICON_FILES[code]}.png`;
+  return `/status/badge/${STATUS_ICON_FILES[code]}.svg`;
 }
 
 export const statusOptions: {

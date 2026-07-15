@@ -201,7 +201,7 @@ export default function WorkThumbnail({
           }}
           className={`absolute bottom-2 right-2 z-20 flex shrink-0 items-center justify-center transition-transform duration-200 group-hover/thumb:scale-110 ${
             meta
-              ? `h-9 w-9 overflow-hidden rounded-full bg-white shadow-menu ${open ? "scale-110" : ""}`
+              ? `h-9 w-9 overflow-hidden rounded-full shadow-menu ${open ? "scale-110" : ""}`
               : `h-8 w-8 rounded-full bg-brand text-white shadow-menu ${open ? "scale-110" : ""}`
           }`}
           aria-label="상태 설정"
