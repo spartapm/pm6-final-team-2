@@ -8,11 +8,20 @@ import { sectionIcons } from "./SectionHeading";
 import Spinner from "./Spinner";
 import WorkThumbnail from "./WorkThumbnail";
 import {
-  WEBTOON_ONGOING_DAY_FILTERS,
+  ANIME_STATUS_FILTERS,
+  WEBTOON_DAY_FILTERS,
+  WEBTOON_STATUS_FILTERS,
+  genresForType,
   isCompletedStatus,
-  matchesWebtoonOngoingDayFilter,
-  topGenresForType,
+  matchesAnimeStatusFilter,
+  matchesGenreFilters,
+  matchesPlatformFilters,
+  matchesWebtoonDayFilters,
+  matchesWebtoonStatusFilter,
+  platformsForType,
   worksByType,
+  type AnimeStatusFilterId,
+  type WebtoonStatusFilterId,
 } from "@/lib/works";
 import { buildRatingStatsMap } from "@/lib/ratings";
 import { useAllbluState } from "@/lib/useAllbluState";
@@ -25,19 +34,37 @@ const RANK_PERIODS = [
   { id: "yearly", label: "연간" },
 ] as const;
 
-/** 애니 홈 캐러셀: 최초 6개, 좌우로 6개씩, 최대 20개 (무한스크롤 X) */
+/** 홈 캐러셀: 최초 6개, 좌우로 6개씩, 최대 20개 (무한스크롤 X) */
 const HOME_CAROUSEL_PAGE = 6;
 const HOME_CAROUSEL_MAX = 20;
 
-/** 애니 전체 / 웹툰 연재중·완결: 가로6×세로5 = 30, 이후 30개씩 무한스크롤 */
+/** 전체 탭 그리드: 가로6×세로5 = 30, 이후 30개씩 무한스크롤 */
 const GRID_PAGE_SIZE = 30;
 
-function defaultTab(type: WorkType) {
-  return type === "anime" ? "recommend" : "ongoing";
+function defaultTab(_type: WorkType) {
+  return "recommend";
+}
+
+function defaultStatus(type: WorkType): string {
+  return type === "webtoon" ? "ongoing" : "all";
+}
+
+function parseListParam(value: string | null) {
+  if (!value) return [] as string[];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function scrollStorageKey(pathname: string, search: string) {
   return `allblu:explore-scroll:${pathname}${search}`;
+}
+
+function normalizeLegacyTab(type: WorkType, tab: string) {
+  if (type !== "webtoon") return tab;
+  if (tab === "ongoing" || tab === "done") return "all";
+  return tab;
 }
 
 export default function ExplorePage({ type }: { type: WorkType }) {
@@ -60,9 +87,25 @@ function ExplorePageInner({ type }: { type: WorkType }) {
   const pathname = usePathname() ?? (type === "anime" ? "/anime" : "/webtoon");
   const searchParams = useSearchParams();
 
-  const tab = searchParams.get("tab") || defaultTab(type);
-  const genreFilter = searchParams.get("genre") || "전체";
-  const dayFilter = searchParams.get("day") || "ALL";
+  const rawTab = searchParams.get("tab") || defaultTab(type);
+  const tab = normalizeLegacyTab(type, rawTab);
+  const statusFromUrl = searchParams.get("status");
+  const statusFilter =
+    statusFromUrl ||
+    (type === "webtoon" && rawTab === "done"
+      ? "done"
+      : type === "webtoon" && rawTab === "ongoing"
+        ? "ongoing"
+        : defaultStatus(type));
+  const genresParam = searchParams.get("genres") || "";
+  const platformsParam = searchParams.get("platforms") || "";
+  const daysParam = searchParams.get("days") || "";
+  const genreFilters = useMemo(() => parseListParam(genresParam), [genresParam]);
+  const platformFilters = useMemo(
+    () => parseListParam(platformsParam),
+    [platformsParam]
+  );
+  const dayFilters = useMemo(() => parseListParam(daysParam), [daysParam]);
   const countParam = Number(searchParams.get("n") || "");
   const [count, setCount] = useState(
     Number.isFinite(countParam) && countParam >= GRID_PAGE_SIZE
@@ -81,78 +124,116 @@ function ExplorePageInner({ type }: { type: WorkType }) {
     [state.reviews]
   );
   const all = useMemo(() => worksByType(type), [type, worksRevision]);
-  const genreFilters = useMemo(
-    () => ["전체", ...topGenresForType(type)],
-    [type, worksRevision]
-  );
-  const dayFilters = useMemo(
-    () => WEBTOON_ONGOING_DAY_FILTERS.map((item) => ({ id: item.id, label: item.label })),
-    []
-  );
-  const isWebtoonOngoing = type === "webtoon" && tab === "ongoing";
-  const isWebtoonDone = type === "webtoon" && tab === "done";
-  const isGrid =
-    type === "anime" ? tab === "all" : isWebtoonOngoing || isWebtoonDone;
+  const genreOptions = useMemo(() => genresForType(type), [type, worksRevision]);
+  const platformOptions = useMemo(() => platformsForType(type), [type, worksRevision]);
+  const isGrid = tab === "all";
 
   const filtered = useMemo(() => {
-    if (isWebtoonDone) {
-      let list = all.filter((work) => isCompletedStatus(work.statusLabel));
-      if (genreFilter !== "전체") {
-        list = list.filter((work) => work.genres.includes(genreFilter));
+    if (!isGrid) return all;
+    return all.filter((work) => {
+      const statusOk =
+        type === "anime"
+          ? matchesAnimeStatusFilter(work, statusFilter as AnimeStatusFilterId)
+          : matchesWebtoonStatusFilter(work, statusFilter as WebtoonStatusFilterId);
+      if (!statusOk) return false;
+      if (!matchesGenreFilters(work, genreFilters)) return false;
+      if (!matchesPlatformFilters(work, platformFilters)) return false;
+      if (type === "webtoon" && !matchesWebtoonDayFilters(work, dayFilters)) {
+        return false;
       }
-      return list;
-    }
-    if (isWebtoonOngoing) {
-      return all.filter((work) => matchesWebtoonOngoingDayFilter(work, dayFilter));
-    }
-    if (type === "anime" && tab === "all" && genreFilter !== "전체") {
-      return all.filter((work) => work.genres.includes(genreFilter));
-    }
-    return all;
-  }, [all, dayFilter, genreFilter, isWebtoonDone, isWebtoonOngoing, tab, type]);
+      return true;
+    });
+  }, [
+    all,
+    dayFilters,
+    genreFilters,
+    isGrid,
+    platformFilters,
+    statusFilter,
+    type,
+  ]);
 
-  const animeHomeSections = useMemo(() => {
-    if (type !== "anime") return null;
+  const homeSections = useMemo(() => {
     return {
-      rank: shuffleBySeed(all, `anime-rank-${rankPeriod}`).slice(0, HOME_CAROUSEL_MAX),
+      rank: shuffleBySeed(all, `${type}-rank-${rankPeriod}`).slice(0, HOME_CAROUSEL_MAX),
       completed: all
         .filter((work) => isCompletedStatus(work.statusLabel))
         .slice(0, HOME_CAROUSEL_MAX),
-      newSeason: all
-        .filter((work) => work.statusLabel === "방영 중" || work.statusLabel === "공개 예정")
+      airing: all
+        .filter((work) =>
+          type === "anime"
+            ? work.statusLabel === "방영 중" || work.statusLabel === "공개 예정"
+            : work.statusLabel === "연재 중"
+        )
         .slice(0, HOME_CAROUSEL_MAX),
       recent: [...all].slice(0, HOME_CAROUSEL_MAX),
     };
   }, [all, rankPeriod, type, worksRevision]);
 
+  const selectedConditionCount = useMemo(() => {
+    let countSelected = 0;
+    if (statusFilter !== defaultStatus(type)) countSelected += 1;
+    countSelected += genreFilters.length;
+    countSelected += platformFilters.length;
+    if (type === "webtoon") countSelected += dayFilters.length;
+    return countSelected;
+  }, [dayFilters.length, genreFilters.length, platformFilters.length, statusFilter, type]);
+
+  const isFilterDirty = selectedConditionCount > 0;
+
   const buildQuery = useCallback(
-    (next: { tab?: string; genre?: string; day?: string; n?: number }) => {
+    (next: {
+      tab?: string;
+      status?: string;
+      genres?: string[];
+      platforms?: string[];
+      days?: string[];
+      n?: number;
+    }) => {
       const params = new URLSearchParams();
       const nextTab = next.tab ?? tab;
-      const nextGenre = next.genre ?? genreFilter;
-      const nextDay = next.day ?? dayFilter;
+      const nextStatus = next.status ?? statusFilter;
+      const nextGenres = next.genres ?? genreFilters;
+      const nextPlatforms = next.platforms ?? platformFilters;
+      const nextDays = next.days ?? dayFilters;
       const nextN = next.n ?? count;
+
       if (nextTab !== defaultTab(type)) params.set("tab", nextTab);
-      if (nextTab === "done" || (type === "anime" && nextTab === "all")) {
-        if (nextGenre !== "전체") params.set("genre", nextGenre);
-      }
-      if (type === "webtoon" && nextTab === "ongoing" && nextDay !== "ALL") {
-        params.set("day", nextDay);
-      }
-      if (
-        (type === "anime" && nextTab === "all") ||
-        (type === "webtoon" && (nextTab === "done" || nextTab === "ongoing"))
-      ) {
+
+      if (nextTab === "all") {
+        if (nextStatus !== defaultStatus(type)) params.set("status", nextStatus);
+        if (nextGenres.length) params.set("genres", nextGenres.join(","));
+        if (nextPlatforms.length) params.set("platforms", nextPlatforms.join(","));
+        if (type === "webtoon" && nextDays.length) {
+          params.set("days", nextDays.join(","));
+        }
         if (nextN > GRID_PAGE_SIZE) params.set("n", String(nextN));
       }
+
       const qs = params.toString();
       return qs ? `${pathname}?${qs}` : pathname;
     },
-    [tab, genreFilter, dayFilter, count, type, pathname]
+    [
+      tab,
+      statusFilter,
+      genreFilters,
+      platformFilters,
+      dayFilters,
+      count,
+      type,
+      pathname,
+    ]
   );
 
   const pushExploreUrl = useCallback(
-    (next: { tab?: string; genre?: string; day?: string; n?: number }) => {
+    (next: {
+      tab?: string;
+      status?: string;
+      genres?: string[];
+      platforms?: string[];
+      days?: string[];
+      n?: number;
+    }) => {
       router.push(buildQuery(next), { scroll: false });
     },
     [router, buildQuery]
@@ -166,7 +247,15 @@ function ExplorePageInner({ type }: { type: WorkType }) {
     setCount(fromUrl);
     scrollRestoredRef.current = false;
     skipCountUrlSyncRef.current = true;
-  }, [tab, genreFilter, dayFilter, type, countParam]);
+  }, [
+    tab,
+    statusFilter,
+    genresParam,
+    platformsParam,
+    daysParam,
+    type,
+    countParam,
+  ]);
 
   useEffect(() => {
     if (!isGrid) return;
@@ -225,7 +314,7 @@ function ExplorePageInner({ type }: { type: WorkType }) {
       window.removeEventListener("pagehide", save);
       document.removeEventListener("click", onClick, true);
     };
-  }, [pathname, tab, genreFilter, dayFilter, count]);
+  }, [pathname, tab, statusFilter, genreFilters, platformFilters, dayFilters, count]);
 
   useEffect(() => {
     if (scrollRestoredRef.current) return;
@@ -255,23 +344,47 @@ function ExplorePageInner({ type }: { type: WorkType }) {
       window.requestAnimationFrame(restore);
     });
     return () => window.cancelAnimationFrame(id);
-  }, [pathname, tab, genreFilter, dayFilter, count, filtered.length, isGrid]);
+  }, [
+    pathname,
+    tab,
+    statusFilter,
+    genreFilters,
+    platformFilters,
+    dayFilters,
+    count,
+    filtered.length,
+    isGrid,
+  ]);
 
-  const primaryTabs =
-    type === "anime"
-      ? [
-          { id: "recommend", label: "올블루 추천" },
-          { id: "all", label: "전체" },
-        ]
-      : [
-          { id: "ongoing", label: "연재중" },
-          { id: "done", label: "완결" },
-        ];
+  const primaryTabs = [
+    { id: "recommend", label: "올블루 추천" },
+    { id: "all", label: "전체" },
+  ];
 
-  const gridChips = isWebtoonOngoing
-    ? dayFilters
-    : genreFilters.map((label) => ({ id: label, label }));
-  const activeChip = isWebtoonOngoing ? dayFilter : genreFilter;
+  const resetFilters = () => {
+    setCount(GRID_PAGE_SIZE);
+    pushExploreUrl({
+      tab: "all",
+      status: defaultStatus(type),
+      genres: [],
+      platforms: [],
+      days: [],
+      n: GRID_PAGE_SIZE,
+    });
+  };
+
+  const toggleMulti = (list: string[], value: string) =>
+    list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+
+  const onStatusClick = (id: string) => {
+    setCount(GRID_PAGE_SIZE);
+    const next = statusFilter === id ? "" : id;
+    // 선택 해제 시 필터 없음(=전체와 동일하게 동작). URL에는 all로 정규화하지 않고 빈 상태를 all로 저장
+    pushExploreUrl({
+      status: next || "all",
+      n: GRID_PAGE_SIZE,
+    });
+  };
 
   return (
     <AppShell>
@@ -287,8 +400,10 @@ function ExplorePageInner({ type }: { type: WorkType }) {
                   setCount(GRID_PAGE_SIZE);
                   pushExploreUrl({
                     tab: item.id,
-                    genre: "전체",
-                    day: "ALL",
+                    status: defaultStatus(type),
+                    genres: [],
+                    platforms: [],
+                    days: [],
                     n: GRID_PAGE_SIZE,
                   });
                 }}
@@ -305,31 +420,58 @@ function ExplorePageInner({ type }: { type: WorkType }) {
         </div>
 
         {isGrid ? (
-          <CatalogGrid
-            works={filtered}
-            count={count}
-            chipFilter={activeChip}
-            chipFilters={gridChips}
-            onChipFilterChange={(chipId) => {
-              setCount(GRID_PAGE_SIZE);
-              if (isWebtoonOngoing) {
-                pushExploreUrl({ day: chipId, n: GRID_PAGE_SIZE });
-              } else {
-                pushExploreUrl({ genre: chipId, n: GRID_PAGE_SIZE });
-              }
-            }}
-            userId={state.currentUserId}
-            statuses={userStatuses}
-            ratingStats={ratingStats}
-            loadingMore={loadingMore}
-            sentinelRef={sentinelRef}
-          />
-        ) : type === "anime" && animeHomeSections ? (
+          <section>
+            <FilterPanel
+              type={type}
+              statusFilter={statusFilter}
+              genreFilters={genreFilters}
+              platformFilters={platformFilters}
+              dayFilters={dayFilters}
+              genreOptions={genreOptions}
+              platformOptions={platformOptions}
+              selectedConditionCount={selectedConditionCount}
+              isFilterDirty={isFilterDirty}
+              onStatusClick={onStatusClick}
+              onGenreClick={(genre) => {
+                setCount(GRID_PAGE_SIZE);
+                pushExploreUrl({
+                  genres: toggleMulti(genreFilters, genre),
+                  n: GRID_PAGE_SIZE,
+                });
+              }}
+              onPlatformClick={(platform) => {
+                setCount(GRID_PAGE_SIZE);
+                pushExploreUrl({
+                  platforms: toggleMulti(platformFilters, platform),
+                  n: GRID_PAGE_SIZE,
+                });
+              }}
+              onDayClick={(day) => {
+                setCount(GRID_PAGE_SIZE);
+                pushExploreUrl({
+                  days: toggleMulti(dayFilters, day),
+                  n: GRID_PAGE_SIZE,
+                });
+              }}
+              onReset={resetFilters}
+            />
+
+            <CatalogGrid
+              works={filtered}
+              count={count}
+              userId={state.currentUserId}
+              statuses={userStatuses}
+              ratingStats={ratingStats}
+              loadingMore={loadingMore}
+              sentinelRef={sentinelRef}
+            />
+          </section>
+        ) : (
           <div className="space-y-5">
             <SectionCarousel
               title="인기작 순위 TOP 20"
               icon={sectionIcons.bigWave}
-              works={animeHomeSections.rank}
+              works={homeSections.rank}
               userId={state.currentUserId}
               statuses={userStatuses}
               ratingStats={ratingStats}
@@ -343,18 +485,18 @@ function ExplorePageInner({ type }: { type: WorkType }) {
               tabStyle="underline"
             />
             <SectionCarousel
-              title="완결·종료 애니"
+              title={type === "anime" ? "완결·종료 애니" : "완결 웹툰"}
               icon={sectionIcons.anchor}
-              works={animeHomeSections.completed}
+              works={homeSections.completed}
               userId={state.currentUserId}
               statuses={userStatuses}
               ratingStats={ratingStats}
               pageSize={HOME_CAROUSEL_PAGE}
             />
             <SectionCarousel
-              title="방영 중·공개 예정"
+              title={type === "anime" ? "방영 중·공개 예정" : "연재 중 웹툰"}
               icon={sectionIcons.sunrise}
-              works={animeHomeSections.newSeason}
+              works={homeSections.airing}
               userId={state.currentUserId}
               statuses={userStatuses}
               ratingStats={ratingStats}
@@ -363,25 +505,176 @@ function ExplorePageInner({ type }: { type: WorkType }) {
             <SectionCarousel
               title="최근 추가된 작품"
               icon={sectionIcons.dropletNew}
-              works={animeHomeSections.recent}
+              works={homeSections.recent}
               userId={state.currentUserId}
               statuses={userStatuses}
               ratingStats={ratingStats}
               pageSize={HOME_CAROUSEL_PAGE}
             />
           </div>
-        ) : null}
+        )}
       </div>
     </AppShell>
+  );
+}
+
+function FilterPanel({
+  type,
+  statusFilter,
+  genreFilters,
+  platformFilters,
+  dayFilters,
+  genreOptions,
+  platformOptions,
+  selectedConditionCount,
+  isFilterDirty,
+  onStatusClick,
+  onGenreClick,
+  onPlatformClick,
+  onDayClick,
+  onReset,
+}: {
+  type: WorkType;
+  statusFilter: string;
+  genreFilters: string[];
+  platformFilters: string[];
+  dayFilters: string[];
+  genreOptions: string[];
+  platformOptions: string[];
+  selectedConditionCount: number;
+  isFilterDirty: boolean;
+  onStatusClick: (id: string) => void;
+  onGenreClick: (genre: string) => void;
+  onPlatformClick: (platform: string) => void;
+  onDayClick: (day: string) => void;
+  onReset: () => void;
+}) {
+  const statusOptions =
+    type === "anime" ? ANIME_STATUS_FILTERS : WEBTOON_STATUS_FILTERS;
+  const statusLabel = type === "anime" ? "방영 상태" : "작품 상태";
+  const hint =
+    type === "anime"
+      ? "방영 상태, 장르, 플랫폼을 복수로 골라 작품을 찾아보세요."
+      : "작품 상태, 연재 요일, 장르, 플랫폼을 복수로 골라 작품을 찾아보세요.";
+
+  return (
+    <div className="mb-6 rounded-2xl border border-line bg-white p-4 md:p-5">
+      <FilterRow label={statusLabel}>
+        {statusOptions.map((item) => (
+          <FilterChip
+            key={item.id}
+            label={item.label}
+            active={statusFilter === item.id}
+            onClick={() => onStatusClick(item.id)}
+          />
+        ))}
+      </FilterRow>
+
+      {type === "webtoon" ? (
+        <FilterRow label="연재 요일">
+          {WEBTOON_DAY_FILTERS.map((item) => (
+            <FilterChip
+              key={item.id}
+              label={item.label}
+              active={dayFilters.includes(item.id)}
+              onClick={() => onDayClick(item.id)}
+            />
+          ))}
+        </FilterRow>
+      ) : null}
+
+      <FilterRow label="장르">
+        {genreOptions.map((genre) => (
+          <FilterChip
+            key={genre}
+            label={genre}
+            active={genreFilters.includes(genre)}
+            onClick={() => onGenreClick(genre)}
+          />
+        ))}
+      </FilterRow>
+
+      <FilterRow label="플랫폼" last>
+        {platformOptions.map((platform) => (
+          <FilterChip
+            key={platform}
+            label={platform}
+            active={platformFilters.includes(platform)}
+            onClick={() => onPlatformClick(platform)}
+          />
+        ))}
+      </FilterRow>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+        <p className="text-xs font-bold text-muted">
+          {isFilterDirty
+            ? `선택한 조건 ${selectedConditionCount}개가 적용되어 있어요.`
+            : hint}
+        </p>
+        <button
+          type="button"
+          onClick={onReset}
+          className={`rounded-lg px-4 py-2 text-sm font-black transition ${
+            isFilterDirty
+              ? "bg-brand text-white"
+              : "border border-line bg-[#f3f4f6] text-muted"
+          }`}
+        >
+          필터 초기화
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FilterRow({
+  label,
+  children,
+  last = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={`flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4 ${
+        last ? "" : "mb-3"
+      }`}
+    >
+      <p className="w-20 shrink-0 pt-1.5 text-sm font-black text-ink">{label}</p>
+      <div className="flex min-w-0 flex-1 flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg px-3 py-1.5 text-sm font-bold transition ${
+        active
+          ? "bg-brand text-white"
+          : "border border-line bg-[#f3f4f6] text-ink hover:border-brand/40"
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
 function CatalogGrid({
   works,
   count,
-  chipFilter,
-  chipFilters,
-  onChipFilterChange,
   userId,
   statuses,
   ratingStats,
@@ -390,9 +683,6 @@ function CatalogGrid({
 }: {
   works: Work[];
   count: number;
-  chipFilter: string;
-  chipFilters: { id: string; label: string }[];
-  onChipFilterChange: (chipId: string) => void;
   userId?: string;
   statuses: Record<string, import("@/lib/types").WorkStatus>;
   ratingStats?: Map<string, import("@/lib/ratings").WorkRatingStats>;
@@ -403,26 +693,6 @@ function CatalogGrid({
 
   return (
     <section>
-      <div className="mb-5 flex flex-wrap gap-2">
-        {chipFilters.map((item) => {
-          const active = chipFilter === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onChipFilterChange(item.id)}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-                active
-                  ? "bg-brand text-white"
-                  : "bg-blueSoft text-brand hover:bg-[#dce8ff]"
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-
       {visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line px-6 py-16 text-center text-sm text-muted">
           조건에 맞는 작품이 없습니다.

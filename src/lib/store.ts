@@ -5,7 +5,7 @@
  * Prefer importing from those modules directly in new code.
  */
 
-export { signIn as login, signUp as signup, signOut as logout, getSessionUser as currentUser } from "./auth";
+export { signIn as login, signUp as signup, signOut as logout, getSessionUser as currentUser, updateNickname, updateBadge } from "./auth";
 export {
   setWorkStatus,
   toggleWorkStatus,

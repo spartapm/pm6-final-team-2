@@ -39,7 +39,7 @@ export default function WorkDetailPage() {
   const router = useRouter();
   const { state, worksRevision } = useAllbluState();
   const work = useMemo(() => getWork(params.id), [params.id, worksRevision]);
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(5);
   const [content, setContent] = useState("");
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [recType, setRecType] = useState<WorkType | null>(null);
@@ -126,7 +126,7 @@ export default function WorkDetailPage() {
       return;
     }
     if (myReview) return;
-    if (rating < 1 || content.trim().length < 10 || content.length > 1000) {
+    if (content.trim().length < 10 || content.length > 1000) {
       alert("글자수는 10자에서 1000자 사이로 입력해주세요.");
       return;
     }
@@ -141,7 +141,7 @@ export default function WorkDetailPage() {
       alert(result.message);
       return;
     }
-    setRating(0);
+    setRating(5);
     setContent("");
   };
 
@@ -470,23 +470,25 @@ export default function WorkDetailPage() {
                     ))}
                   </div>
                   <span className="text-sm font-bold text-muted">
-                    {(rating || 0).toFixed(1)}
+                    {rating.toFixed(1)}
                   </span>
                 </div>
 
                 <textarea
                   disabled={!user || Boolean(myReview)}
                   value={content}
-                  onChange={(event) => setContent(event.target.value)}
+                  maxLength={1000}
+                  onChange={(event) => setContent(event.target.value.slice(0, 1000))}
                   placeholder={
                     user
                       ? myReview
                         ? "이미 이 작품에 평가를 작성했습니다."
-                        : "최소 10자 ~ 최대 1,000자"
+                        : "이 작품에 대한 생각을 10자 이상 남겨주세요."
                       : "평가 작성은 로그인 후 이용 가능합니다."
                   }
                   className="min-h-[120px] w-full resize-none rounded-xl border border-line bg-white p-3 text-sm outline-none disabled:bg-surface"
                 />
+                <p className="mt-2 text-xs text-muted">{content.length}/1000</p>
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                   <p className="text-xs text-muted">한 작품당 평점은 1회만 작성 가능합니다.</p>

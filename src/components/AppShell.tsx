@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { signOut } from "@/lib/auth";
+import { signOut, updateNickname } from "@/lib/auth";
 import { trackSearchResultView } from "@/lib/analytics";
+import { NICKNAME_PLACEHOLDER, validateNickname } from "@/lib/nickname";
 import { searchWorks } from "@/lib/works";
 import { useAllbluState } from "@/lib/useAllbluState";
 import type { WorkType } from "@/lib/types";
 import Footer from "./Footer";
 import Logo from "./Logo";
-import Toast from "./Toast";
+import Toast, { showToast } from "./Toast";
 
 const navItems = [
   { href: "/", label: "홈" },
@@ -26,7 +27,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"all" | WorkType>("all");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [nicknameModalOpen, setNicknameModalOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuCloseTimer = useRef<number | null>(null);
   const lastSearchKey = useRef<string>("");
   const user = state.users.find((item) => item.id === state.currentUserId);
   const results = useMemo(
@@ -34,14 +39,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     [query, scope, worksRevision]
   );
 
+  const clearMenuCloseTimer = () => {
+    if (menuCloseTimer.current != null) {
+      window.clearTimeout(menuCloseTimer.current);
+      menuCloseTimer.current = null;
+    }
+  };
+
+  const openMenu = () => {
+    clearMenuCloseTimer();
+    setMenuOpen(true);
+  };
+
+  const scheduleCloseMenu = () => {
+    clearMenuCloseTimer();
+    menuCloseTimer.current = window.setTimeout(() => setMenuOpen(false), 150);
+  };
+
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
       if (!searchRef.current?.contains(event.target as Node)) {
         setSearchOpen(false);
       }
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
     };
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  useEffect(() => {
+    return () => clearMenuCloseTimer();
   }, []);
 
   useEffect(() => {
@@ -139,25 +168,64 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {/* 세션 확인 전에는 비로그인 CTA를 그리지 않음 (깜빡임·오클릭 방지) */}
           {!ready ? (
             <div
-              className="h-10 w-[88px] shrink-0 animate-pulse rounded-full bg-search"
+              className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-search"
               aria-hidden
             />
           ) : user ? (
-            <div className="flex items-center gap-2">
-              <Link
-                href="/mypage"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-ink/20 text-ink hover:border-brand hover:text-brand"
-                aria-label="마이페이지"
-              >
-                <UserIcon />
-              </Link>
+            <div
+              ref={menuRef}
+              className="relative shrink-0"
+              onMouseEnter={openMenu}
+              onMouseLeave={scheduleCloseMenu}
+            >
               <button
                 type="button"
-                onClick={() => void signOut()}
-                className="hidden text-xs font-bold text-muted hover:text-ink md:block"
+                onClick={() => setMenuOpen((open) => !open)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-blueSoft text-sm font-black text-brand transition hover:ring-2 hover:ring-brand/20"
+                aria-label="계정 메뉴"
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
               >
-                로그아웃
+                {(user.nickname || "유").slice(0, 1)}
               </button>
+
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 min-w-[148px] overflow-hidden rounded-xl border border-line bg-white py-1 shadow-menu"
+                >
+                  <Link
+                    href="/mypage"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block px-4 py-2.5 text-sm font-bold text-ink hover:bg-[#f3f4f6]"
+                  >
+                    마이페이지
+                  </Link>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setNicknameModalOpen(true);
+                    }}
+                    className="block w-full px-4 py-2.5 text-left text-sm font-bold text-ink hover:bg-[#f3f4f6]"
+                  >
+                    회원정보 변경
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void signOut();
+                    }}
+                    className="block w-full px-4 py-2.5 text-left text-sm font-bold text-[#ef4444] hover:bg-[#fef2f2]"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="flex items-center gap-2">
@@ -175,6 +243,152 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
       <Footer />
       <Toast />
+
+      {user ? (
+        <NicknameChangeModal
+          open={nicknameModalOpen}
+          currentNickname={user.nickname}
+          userId={user.id}
+          onClose={() => setNicknameModalOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function NicknameChangeModal({
+  open,
+  currentNickname,
+  userId,
+  onClose,
+}: {
+  open: boolean;
+  currentNickname: string;
+  userId: string;
+  onClose: () => void;
+}) {
+  const [nickname, setNickname] = useState(currentNickname);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setNickname(currentNickname);
+    setError("");
+    setSaving(false);
+  }, [open, currentNickname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const save = async () => {
+    const check = validateNickname(nickname);
+    if (!check.ok) {
+      setError(check.message);
+      return;
+    }
+    if (check.value === currentNickname) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const result = await updateNickname(userId, check.value);
+    setSaving(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    showToast("닉네임이 변경되었습니다");
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl border border-line bg-white p-5 shadow-panel md:p-6"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="nickname-change-title"
+      >
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-brand">회원정보 변경</p>
+            <h2
+              id="nickname-change-title"
+              className="mt-1 text-xl font-black tracking-tight text-ink"
+            >
+              닉네임 변경
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-surface hover:text-ink"
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+
+        <p className="mb-4 text-sm text-muted">다른 유저에게 표시될 이름이에요.</p>
+
+        <label className="mb-1.5 block text-sm font-bold text-ink" htmlFor="nickname-input">
+          닉네임
+        </label>
+        <input
+          id="nickname-input"
+          value={nickname}
+          maxLength={12}
+          autoFocus
+          autoComplete="nickname"
+          onChange={(event) => {
+            setNickname(event.target.value);
+            if (error) setError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void save();
+          }}
+          placeholder={NICKNAME_PLACEHOLDER}
+          className="w-full rounded-xl border border-line bg-white px-4 py-3 text-sm outline-none focus:border-brand"
+        />
+        {error ? (
+          <p className="mt-2 text-xs font-bold text-[#ef4444]">{error}</p>
+        ) : (
+          <p className="mt-2 text-xs text-muted">띄어쓰기 없이 1~12자, 특수문자 불가</p>
+        )}
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-full border border-line bg-white px-5 py-2 text-sm font-bold text-ink"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="rounded-full bg-brand px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
+          >
+            저장
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -184,20 +398,6 @@ function SearchIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="11" cy="11" r="7" stroke="#6b7280" strokeWidth="2" />
       <path d="M20 20l-3.5-3.5" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function UserIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M5 19c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
     </svg>
   );
 }

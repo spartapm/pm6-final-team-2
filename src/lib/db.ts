@@ -320,6 +320,19 @@ export async function addPick(input: {
 
   if (existing) {
     pickId = existing.id as string;
+    const { data: existingReason } = await supabase
+      .from("ollpick_reasons")
+      .select("id")
+      .eq("pick_id", pickId)
+      .eq("user_id", input.userId)
+      .maybeSingle();
+    if (existingReason) {
+      return {
+        ok: false as const,
+        code: "duplicate_pair" as const,
+        message: "이미 같은 조합으로 작성하셨어요.",
+      };
+    }
   } else {
     const { data: created, error } = await supabase
       .from("ollpicks")
@@ -335,16 +348,22 @@ export async function addPick(input: {
 
   const isDuplicatePair = Boolean(existing);
 
-  const { error: reasonError } = await supabase.from("ollpick_reasons").upsert(
-    {
-      pick_id: pickId,
-      user_id: input.userId,
-      content: reason,
-      created_at: new Date().toISOString(),
-    },
-    { onConflict: "pick_id,user_id" }
-  );
-  if (reasonError) return { ok: false as const, message: reasonError.message };
+  const { error: reasonError } = await supabase.from("ollpick_reasons").insert({
+    pick_id: pickId,
+    user_id: input.userId,
+    content: reason,
+    created_at: new Date().toISOString(),
+  });
+  if (reasonError) {
+    if (reasonError.code === "23505") {
+      return {
+        ok: false as const,
+        code: "duplicate_pair" as const,
+        message: "이미 같은 조합으로 작성하셨어요.",
+      };
+    }
+    return { ok: false as const, message: reasonError.message };
+  }
 
   window.dispatchEvent(new Event("allblu-state-change"));
   return { ok: true as const, pickId, isDuplicatePair };

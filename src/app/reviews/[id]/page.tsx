@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams, useRouter } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import { showLoginRequired, showToast } from "@/components/Toast";
 import {
-  deleteReview,
   hasLikedReview,
   isFollowing,
   likeReview,
@@ -18,7 +17,6 @@ import { getWork } from "@/lib/works";
 
 export default function ReviewDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { state, ready } = useAllbluState();
   const review = state.reviews.find((item) => item.id === params.id);
   const [following, setFollowing] = useState(false);
@@ -66,12 +64,6 @@ export default function ReviewDetailPage() {
     }
     if (isAuthor) return;
     setFollowing(await toggleFollow(review.userId, userId));
-  };
-
-  const onDelete = async () => {
-    if (!userId || !isAuthor) return;
-    await deleteReview(review.id, userId);
-    router.replace(`/works/${work.id}`);
   };
 
   return (
@@ -133,33 +125,17 @@ export default function ReviewDetailPage() {
                     </p>
                   </div>
 
-                  {isAuthor ? (
-                    <div className="flex gap-2">
-                      <Link
-                        href={`/reviews/${review.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded-full bg-brand px-4 py-2 text-sm font-bold text-white"
-                      >
-                        ✎ 수정
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => void onDelete()}
-                        className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-4 py-2 text-sm font-bold text-red-500"
-                      >
-                        ✕ 삭제
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void onLike()}
-                        className={`inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold text-white ${
-                          liked ? "bg-brand/70" : "bg-brand"
-                        }`}
-                      >
-                        👍 공감
-                      </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void onLike()}
+                      className={`inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-bold text-white ${
+                        liked ? "bg-brand/70" : "bg-brand"
+                      }`}
+                    >
+                      👍 공감
+                    </button>
+                    {!isAuthor && (
                       <button
                         type="button"
                         onClick={() => void onFollow()}
@@ -171,8 +147,8 @@ export default function ReviewDetailPage() {
                       >
                         {following ? "✓ 팔로잉" : "+ 팔로우"}
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

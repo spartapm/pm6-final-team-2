@@ -40,7 +40,9 @@ function WritePickPageInner() {
   const [recommendedWorkId, setRecommendedWorkId] = useState("");
   const [reason, setReason] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [forcedDuplicateWarning, setForcedDuplicateWarning] = useState(false);
   const writeStartSent = useRef(false);
+  const duplicateWarningRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!ready || hydrated) return;
@@ -75,6 +77,33 @@ function WritePickPageInner() {
   const recommendedWork = recommendedWorkId ? getWork(recommendedWorkId) : undefined;
   const cancelHref = baseWorkId ? `/ollpick/${baseWorkId}` : "/ollpick";
 
+  const isDuplicatePair = useMemo(() => {
+    if (!user || !baseWorkId || !recommendedWorkId) return false;
+    return state.picks.some(
+      (pick) =>
+        pick.baseWorkId === baseWorkId &&
+        pick.recommendedWorkId === recommendedWorkId &&
+        (pick.firstRecommenderUserId === user.id ||
+          pick.reasons.some((item) => item.userId === user.id) ||
+          pick.agreeUserIds.includes(user.id))
+    );
+  }, [user, baseWorkId, recommendedWorkId, state.picks]);
+
+  const showDuplicateWarning = isDuplicatePair || forcedDuplicateWarning;
+
+  useEffect(() => {
+    setForcedDuplicateWarning(false);
+  }, [baseWorkId, recommendedWorkId]);
+
+  const scrollToDuplicateWarning = () => {
+    window.setTimeout(() => {
+      duplicateWarningRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 50);
+  };
+
   const save = async () => {
     if (!user) {
       showLoginRequired("recommend_write");
@@ -86,6 +115,11 @@ function WritePickPageInner() {
     }
     if (baseWorkId === recommendedWorkId) {
       alert("서로 다른 작품을 선택해주세요.");
+      return;
+    }
+    if (isDuplicatePair || forcedDuplicateWarning) {
+      setForcedDuplicateWarning(true);
+      scrollToDuplicateWarning();
       return;
     }
     if (reason.trim().length < 10 || reason.length > 200) {
@@ -101,6 +135,11 @@ function WritePickPageInner() {
       nickname: user.nickname,
     });
     if (!result.ok) {
+      if ("code" in result && result.code === "duplicate_pair") {
+        setForcedDuplicateWarning(true);
+        scrollToDuplicateWarning();
+        return;
+      }
       alert(result.message);
       trackAppError({ errorType: "write_submit_fail", pageName: "ollpick_write" });
       return;
@@ -152,6 +191,26 @@ function WritePickPageInner() {
               onSelect={setRecommendedWorkId}
               onClear={() => setRecommendedWorkId("")}
             />
+
+            {showDuplicateWarning ? (
+              <div
+                ref={duplicateWarningRef}
+                role="alert"
+                className="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3"
+              >
+                <span className="shrink-0 text-lg leading-none" aria-hidden>
+                  ⚠️
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-red-700">
+                    이미 같은 조합으로 작성하셨어요.
+                  </p>
+                  <p className="mt-1 text-xs font-bold leading-relaxed text-red-600/90">
+                    내가 쓴 올블픽은 마이페이지에서 수정할 수 있어요.
+                  </p>
+                </div>
+              </div>
+            ) : null}
 
             <div>
               <div className="mb-2 flex flex-wrap items-baseline gap-2">

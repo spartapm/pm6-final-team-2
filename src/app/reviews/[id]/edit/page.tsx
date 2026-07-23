@@ -49,7 +49,7 @@ export default function ReviewEditPage() {
 
   const save = async () => {
     if (!userId || !isAuthor) return;
-    if (rating < 1 || content.trim().length < 10 || content.length > 1000) {
+    if (content.trim().length < 10 || content.length > 1000) {
       alert("글자수는 10자에서 1000자 사이로 입력해주세요.");
       return;
     }
@@ -135,11 +135,12 @@ export default function ReviewEditPage() {
 
           <textarea
             value={content}
-            onChange={(event) => setContent(event.target.value)}
-            placeholder="최소 10자 ~ 최대 1,000자"
+            maxLength={1000}
+            onChange={(event) => setContent(event.target.value.slice(0, 1000))}
+            placeholder="이 작품에 대한 생각을 10자 이상 남겨주세요."
             className="mt-5 min-h-[240px] w-full resize-none rounded-xl border border-line bg-white p-5 text-sm leading-7 outline-none"
           />
-          <p className="mt-2 text-right text-xs text-muted">{content.length}/1000</p>
+          <p className="mt-2 text-xs text-muted">{content.length}/1000</p>
         </div>
       </section>
     </AppShell>

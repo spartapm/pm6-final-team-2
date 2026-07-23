@@ -167,3 +167,59 @@ export async function signOut() {
   await supabase.auth.signOut();
   window.dispatchEvent(new Event("allblu-state-change"));
 }
+
+export async function updateNickname(
+  userId: string,
+  nickname: string
+): Promise<AuthResult> {
+  if (!supabaseConfigured) {
+    return { ok: false, message: "Supabase가 설정되지 않았습니다." };
+  }
+  const nickCheck = validateNickname(nickname);
+  if (!nickCheck.ok) return { ok: false, message: nickCheck.message };
+  const trimmedNick = nickCheck.value;
+
+  const { data: nickHit } = await supabase
+    .from("profiles")
+    .select("user_id")
+    .eq("nickname", trimmedNick)
+    .neq("user_id", userId)
+    .maybeSingle();
+  if (nickHit) return { ok: false, message: "중복된 닉네임 입니다." };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ nickname: trimmedNick })
+    .eq("user_id", userId);
+  if (error) return { ok: false, message: mapAuthError(error.message) };
+
+  await supabase.auth.updateUser({ data: { nickname: trimmedNick } });
+  window.dispatchEvent(new Event("allblu-state-change"));
+  return { ok: true };
+}
+
+export async function updateBadge(userId: string, badge: string): Promise<AuthResult> {
+  if (!supabaseConfigured) {
+    return { ok: false, message: "Supabase가 설정되지 않았습니다." };
+  }
+  const trimmed = badge.trim();
+  if (!trimmed) return { ok: false, message: "배지를 입력해주세요." };
+
+  const { data: current } = await supabase
+    .from("profiles")
+    .select("badge")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if ((current?.badge as string | undefined) === trimmed) {
+    return { ok: true };
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ badge: trimmed })
+    .eq("user_id", userId);
+  if (error) return { ok: false, message: mapAuthError(error.message) };
+
+  window.dispatchEvent(new Event("allblu-state-change"));
+  return { ok: true };
+}

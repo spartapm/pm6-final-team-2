@@ -1,11 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import BadgeCollection from "@/components/BadgeCollection";
 import FollowListModal from "@/components/FollowListModal";
-import LibraryShelf from "@/components/LibraryShelf";
+import LibraryShelf, {
+  type LibraryStatusFilter,
+} from "@/components/LibraryShelf";
 import WorkCoverImage from "@/components/WorkCoverImage";
 import WorkThumbnail from "@/components/WorkThumbnail";
 import { showToast } from "@/components/Toast";
@@ -17,7 +20,9 @@ import {
   getFollowingCount,
   isFollowing,
   toggleFollow,
+  updateBadge,
   updateBio,
+  updateReview,
 } from "@/lib/store";
 import { loadWorkStatuses } from "@/lib/db";
 import { buildRatingStatsMap } from "@/lib/ratings";
@@ -25,9 +30,14 @@ import { useAllbluState } from "@/lib/useAllbluState";
 import { getWork, works } from "@/lib/works";
 import type { User, Work, WorkStatus } from "@/lib/types";
 
-type Tab = "overview" | "anime" | "webtoon" | "posts";
+type Tab = "overview" | "anime" | "webtoon" | "posts" | "badges";
 type PostsSub = "recs" | "reviews";
 type FollowModalTab = "followers" | "following";
+
+function formatTabCount(count: number) {
+  if (count > 999) return "999+";
+  return String(count);
+}
 
 export default function UserProfilePage({ profileUserId }: { profileUserId?: string }) {
   const router = useRouter();
@@ -47,6 +57,12 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
     open: boolean;
     tab: FollowModalTab;
   }>({ open: false, tab: "followers" });
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
+  const [editRating, setEditRating] = useState(5);
+  const [editContent, setEditContent] = useState("");
+  const [savingReview, setSavingReview] = useState(false);
+  const [overviewStatus, setOverviewStatus] = useState<WorkStatus | null>(null);
+  const [libraryStatus, setLibraryStatus] = useState<LibraryStatusFilter>("ALL");
 
   const sessionUser = state.users.find((item) => item.id === state.currentUserId);
   const targetId = profileUserId ?? state.currentUserId;
@@ -132,13 +148,32 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
   }, [user, followTick, ready]);
 
   const recentAnime = useMemo(
-    () => recentWorksByType(statuses, statusTimes, "anime"),
-    [statuses, statusTimes, worksRevision]
+    () => recentWorksByType(statuses, statusTimes, "anime", overviewStatus),
+    [statuses, statusTimes, worksRevision, overviewStatus]
   );
   const recentWebtoon = useMemo(
-    () => recentWorksByType(statuses, statusTimes, "webtoon"),
-    [statuses, statusTimes, worksRevision]
+    () => recentWorksByType(statuses, statusTimes, "webtoon", overviewStatus),
+    [statuses, statusTimes, worksRevision, overviewStatus]
   );
+
+  const libraryCounts = useMemo(() => {
+    const anime = works.filter((work) => work.type === "anime" && statuses[work.id]).length;
+    const webtoon = works.filter((work) => work.type === "webtoon" && statuses[work.id]).length;
+    return { anime, webtoon };
+  }, [statuses, worksRevision]);
+
+  const overviewStatusCounts = useMemo(() => {
+    const counts: Record<WorkStatus, number> = {
+      KEEP: 0,
+      WATCHING: 0,
+      DONE: 0,
+      STOPPED: 0,
+    };
+    for (const status of Object.values(statuses)) {
+      if (status in counts) counts[status] += 1;
+    }
+    return counts;
+  }, [statuses]);
 
   const myReviews = useMemo(() => {
     if (!user) return [];
@@ -173,6 +208,20 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
     setPostsSub(sub);
     setTab("posts");
   };
+
+  const goLibrary = (type: "anime" | "webtoon", status: LibraryStatusFilter = "ALL") => {
+    setLibraryStatus(status);
+    setTab(type);
+  };
+
+  const syncRepresentativeBadge = useCallback(
+    (badgeLabel: string) => {
+      if (!isOwnProfile || !user) return;
+      if ((user.badge ?? "올블루 스타터") === badgeLabel) return;
+      void updateBadge(user.id, badgeLabel);
+    },
+    [isOwnProfile, user]
+  );
 
   if (!ready || profileLoading) {
     return (
@@ -238,8 +287,8 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
         {/* 프로필 헤더 — 최상단, 스크롤 시 위로 사라짐 */}
         <section className="border-b border-line bg-white px-6 py-8 lg:px-10">
           <div className="mx-auto flex max-w-6xl flex-wrap items-start gap-5">
-            <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full bg-[#e8eef8] text-4xl text-muted">
-              👤
+            <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-full bg-blueSoft text-3xl font-black text-brand">
+              {(user.nickname || "유").slice(0, 1)}
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-black tracking-tight">{user.nickname}</h1>
@@ -277,29 +326,65 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
 
         {/* 스티키 탭 */}
         <div className="sticky top-[72px] z-30 border-b border-line bg-[#e8f1ff]/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl gap-1 px-4 lg:px-10">
+          <div className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 lg:px-10">
             {(
               [
-                ["overview", "개요"],
-                ["anime", "애니"],
-                ["webtoon", "웹툰"],
-                ["posts", postsTabLabel],
+                { key: "overview" as const, label: "개요" },
+                {
+                  key: "anime" as const,
+                  label: "애니",
+                  count: libraryCounts.anime,
+                },
+                {
+                  key: "webtoon" as const,
+                  label: "웹툰",
+                  count: libraryCounts.webtoon,
+                },
+                {
+                  key: "posts" as const,
+                  label: postsTabLabel,
+                  count: myRecs.length + myReviews.length,
+                },
+                { key: "badges" as const, label: "배지" },
               ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`relative px-4 py-3.5 text-sm font-black transition ${
-                  tab === key ? "text-brand" : "text-muted hover:text-ink"
-                }`}
-              >
-                {label}
-                {tab === key ? (
-                  <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />
-                ) : null}
-              </button>
-            ))}
+            ).map((item) => {
+              const active = tab === item.key;
+              const count =
+                "count" in item && typeof item.count === "number"
+                  ? item.count
+                  : null;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (item.key === "anime" || item.key === "webtoon") {
+                      setLibraryStatus("ALL");
+                    }
+                    setTab(item.key);
+                  }}
+                  className={`relative flex shrink-0 items-center gap-1.5 px-4 py-3.5 text-sm font-black transition ${
+                    active ? "text-brand" : "text-muted hover:text-ink"
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  {count != null ? (
+                    <span
+                      className={`inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-black leading-none ${
+                        active
+                          ? "bg-brand text-white"
+                          : "bg-[#c5d4ef] text-navy"
+                      }`}
+                    >
+                      {formatTabCount(count)}
+                    </span>
+                  ) : null}
+                  {active ? (
+                    <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand" />
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -352,23 +437,73 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                 )}
               </section>
 
-              {/* 2×2: 최근 작품 + 내가 쓴 글 (빈 상태 포함) */}
+              {/* 상태별 요약 필터 */}
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["WATCHING", "보는 중"],
+                    ["DONE", "완료"],
+                    ["KEEP", "볼 예정"],
+                    ["STOPPED", "중단"],
+                  ] as const
+                ).map(([code, label]) => {
+                  const active = overviewStatus === code;
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() =>
+                        setOverviewStatus((prev) => (prev === code ? null : code))
+                      }
+                      className={`rounded-lg px-3.5 py-2 text-sm font-bold transition ${
+                        active
+                          ? "bg-brand text-white"
+                          : "border border-line bg-white text-ink hover:border-brand/40"
+                      }`}
+                    >
+                      {label} {overviewStatusCounts[code]}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => goPosts("recs")}
+                  className="rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-bold text-ink hover:border-brand/40"
+                >
+                  올블픽 {myRecs.length}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goPosts("reviews")}
+                  className="rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-bold text-ink hover:border-brand/40"
+                >
+                  평가 {myReviews.length}
+                </button>
+              </div>
+
+              {/* 최근 작품 */}
               <div className="grid gap-5 lg:grid-cols-2">
                 <RecentWorksPanel
-                  title="최근 유저가 추가한 애니"
+                  title="최근 추가한 애니"
                   tag="애니"
                   items={recentAnime}
                   statuses={statuses}
                   ratingStats={ratingStats}
                   userId={user.id}
+                  onViewAll={() =>
+                    goLibrary("anime", overviewStatus ?? "ALL")
+                  }
                 />
                 <RecentWorksPanel
-                  title="최근 유저가 추가한 웹툰"
+                  title="최근 추가한 웹툰"
                   tag="웹툰"
                   items={recentWebtoon}
                   statuses={statuses}
                   ratingStats={ratingStats}
                   userId={user.id}
+                  onViewAll={() =>
+                    goLibrary("webtoon", overviewStatus ?? "ALL")
+                  }
                 />
                 <OverviewPostsPanel
                   title={isOwnProfile ? "내가 쓴 올블픽 추천글" : "작성한 올블픽 추천글"}
@@ -436,10 +571,12 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
 
           {(tab === "anime" || tab === "webtoon") && (
             <LibraryShelf
+              key={`${tab}-${libraryStatus}`}
               type={tab}
               userId={user.id}
               statuses={statuses}
               statusTimes={statusTimes}
+              initialStatus={libraryStatus}
             />
           )}
 
@@ -483,11 +620,14 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                         >
                           <div className="flex flex-col items-center gap-1">
                             <ThumbMini work={base} size="md" />
-                            <span className="text-[10px] font-bold text-muted">감상작</span>
+                            <span className="text-[10px] font-bold text-muted">좋아한 작품</span>
                           </div>
+                          <span className="pt-6 text-sm font-bold text-muted" aria-hidden>
+                            →
+                          </span>
                           <div className="flex flex-col items-center gap-1">
                             <ThumbMini work={recommended} size="md" />
-                            <span className="text-[10px] font-bold text-muted">추천작</span>
+                            <span className="text-[10px] font-bold text-muted">닮은 작품</span>
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm leading-relaxed text-ink">
@@ -528,6 +668,107 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                 <div className="grid gap-3">
                   {myReviews.map((review) => {
                     const work = getWork(review.workId);
+                    const isEditing = editingReviewId === review.id;
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={review.id}
+                          className="flex flex-wrap items-start gap-4 rounded-xl border border-line bg-white p-4"
+                        >
+                          <div className="shrink-0">
+                            <ThumbMini work={work} size="lg" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-black tracking-tight">
+                              {work?.title ?? "작품"}
+                            </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <div className="flex gap-0.5 text-xl">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    type="button"
+                                    onClick={() => setEditRating(star)}
+                                    className={
+                                      star <= editRating
+                                        ? "text-yellow-400"
+                                        : "text-slate-300"
+                                    }
+                                  >
+                                    ★
+                                  </button>
+                                ))}
+                              </div>
+                              <span className="text-sm font-bold text-muted">
+                                {editRating.toFixed(1)}
+                              </span>
+                            </div>
+                            <textarea
+                              value={editContent}
+                              maxLength={1000}
+                              onChange={(event) =>
+                                setEditContent(event.target.value.slice(0, 1000))
+                              }
+                              placeholder="이 작품에 대한 생각을 10자 이상 남겨주세요."
+                              className="mt-3 min-h-[140px] w-full resize-none rounded-xl border border-line bg-white p-3 text-sm outline-none"
+                            />
+                            <div className="mt-2 flex flex-col items-end gap-2">
+                              <p className="text-xs text-muted">
+                                {editContent.length}/1000
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={savingReview}
+                                  onClick={() => {
+                                    setEditingReviewId(null);
+                                    setEditContent("");
+                                  }}
+                                  className="rounded-full border border-line bg-white px-4 py-1.5 text-xs font-black text-ink"
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingReview}
+                                  onClick={() => {
+                                    if (
+                                      editContent.trim().length < 10 ||
+                                      editContent.length > 1000
+                                    ) {
+                                      alert(
+                                        "글자수는 10자에서 1000자 사이로 입력해주세요."
+                                      );
+                                      return;
+                                    }
+                                    setSavingReview(true);
+                                    void updateReview(review.id, user.id, {
+                                      rating: editRating,
+                                      content: editContent.trim(),
+                                    })
+                                      .then((result) => {
+                                        if (!result.ok) {
+                                          alert(result.message);
+                                          return;
+                                        }
+                                        setEditingReviewId(null);
+                                        setEditContent("");
+                                        showToast("평가글을 수정했습니다");
+                                      })
+                                      .finally(() => setSavingReview(false));
+                                  }}
+                                  className="rounded-full bg-brand px-4 py-1.5 text-xs font-black text-white disabled:opacity-40"
+                                >
+                                  저장
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={review.id}
@@ -563,25 +804,33 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
                         </Link>
                         {isOwnProfile ? (
                           <div className="ml-auto flex shrink-0 items-center gap-2">
-                            <Link
-                              href={`/reviews/${review.id}/edit`}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingReviewId(review.id);
+                                setEditRating(review.rating);
+                                setEditContent(review.content);
+                              }}
                               className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-black text-white"
                             >
                               <PencilIcon />
                               수정
-                            </Link>
+                            </button>
                             <button
                               type="button"
-                              aria-label="평가글 삭제"
                               onClick={() => {
-                                if (!window.confirm("이 평가글을 삭제할까요?")) return;
+                                if (
+                                  !window.confirm("이 작품 평가를 삭제할까요?")
+                                ) {
+                                  return;
+                                }
                                 void deleteReview(review.id, user.id).then(() =>
                                   showToast("평가글을 삭제했습니다")
                                 );
                               }}
-                              className="rounded-lg p-2 text-muted hover:bg-[#f1f5f9] hover:text-ink"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-black text-ink hover:border-red-200 hover:text-red-500"
                             >
-                              <TrashIcon />
+                              삭제
                             </button>
                           </div>
                         ) : null}
@@ -597,6 +846,16 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
               )}
             </section>
           )}
+
+          {tab === "badges" && (
+            <BadgeCollection
+              statuses={statuses}
+              pickCount={myRecs.length}
+              reviewCount={myReviews.length}
+              isOwnProfile={isOwnProfile}
+              onRepresentativeChange={syncRepresentativeBadge}
+            />
+          )}
         </div>
       </div>
     </AppShell>
@@ -606,10 +865,16 @@ export default function UserProfilePage({ profileUserId }: { profileUserId?: str
 function recentWorksByType(
   statuses: Record<string, WorkStatus>,
   times: Record<string, string>,
-  type: "anime" | "webtoon"
+  type: "anime" | "webtoon",
+  statusFilter: WorkStatus | null = null
 ) {
   return works
-    .filter((work) => work.type === type && statuses[work.id])
+    .filter(
+      (work) =>
+        work.type === type &&
+        statuses[work.id] &&
+        (!statusFilter || statuses[work.id] === statusFilter)
+    )
     .sort((a, b) => {
       const ta = times[a.id] ?? "";
       const tb = times[b.id] ?? "";
@@ -625,6 +890,7 @@ function RecentWorksPanel({
   statuses,
   ratingStats,
   userId,
+  onViewAll,
 }: {
   title: string;
   tag: string;
@@ -632,10 +898,20 @@ function RecentWorksPanel({
   statuses: Record<string, WorkStatus>;
   ratingStats: Map<string, import("@/lib/ratings").WorkRatingStats>;
   userId: string;
+  onViewAll: () => void;
 }) {
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-      <h2 className="mb-4 text-base font-black">{title}</h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-base font-black">{title}</h2>
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="rounded-lg border border-brand/40 px-3 py-1.5 text-xs font-bold text-brand hover:bg-blueSoft"
+        >
+          전체 보기
+        </button>
+      </div>
       {items.length ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           {items.map((work) => (

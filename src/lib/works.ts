@@ -253,3 +253,138 @@ export function topGenresForType(type: WorkType, limit = 12) {
     .slice(0, limit)
     .map(([name]) => name);
 }
+
+/** 타입별 전체 장르 (빈도순, 필터 패널용) */
+export function genresForType(type: WorkType) {
+  return topGenresForType(type, Number.POSITIVE_INFINITY);
+}
+
+/** 애니 방영 상태 필터 */
+export const ANIME_STATUS_FILTERS = [
+  { id: "airing", label: "방영 중" },
+  { id: "ended", label: "방영 종료" },
+  { id: "all", label: "전체" },
+] as const;
+
+export type AnimeStatusFilterId = (typeof ANIME_STATUS_FILTERS)[number]["id"];
+
+/** 웹툰 작품 상태 필터 */
+export const WEBTOON_STATUS_FILTERS = [
+  { id: "ongoing", label: "연재 중" },
+  { id: "done", label: "완결" },
+  { id: "all", label: "전체" },
+] as const;
+
+export type WebtoonStatusFilterId = (typeof WEBTOON_STATUS_FILTERS)[number]["id"];
+
+/** 연재 요일 필터 (복수 선택, 전체 칩 없음) */
+export const WEBTOON_DAY_FILTERS = WEBTOON_SERIAL_DAY_SECTIONS.map((section) => ({
+  id: section.code,
+  label: section.label,
+}));
+
+export function matchesAnimeStatusFilter(
+  work: Work,
+  statusId: AnimeStatusFilterId | ""
+) {
+  if (!statusId || statusId === "all") return true;
+  if (statusId === "airing") {
+    return ["방영 중", "공개 예정", "제작 중"].includes(work.statusLabel);
+  }
+  if (statusId === "ended") {
+    return ["방영 종료", "개봉"].includes(work.statusLabel);
+  }
+  return true;
+}
+
+export function matchesWebtoonStatusFilter(
+  work: Work,
+  statusId: WebtoonStatusFilterId | ""
+) {
+  if (!statusId || statusId === "all") return true;
+  if (statusId === "ongoing") return work.statusLabel === "연재 중";
+  if (statusId === "done") return isCompletedStatus(work.statusLabel);
+  return true;
+}
+
+/** 장르 복수 선택: 선택된 장르를 모두 포함 (AND, 누적 필터) */
+export function matchesGenreFilters(work: Work, genres: string[]) {
+  if (!genres.length) return true;
+  return genres.every((genre) => work.genres.includes(genre));
+}
+
+/** 연재 요일 복수 선택: 선택된 요일을 모두 만족 (AND) */
+export function matchesWebtoonDayFilters(work: Work, dayIds: string[]) {
+  if (!dayIds.length) return true;
+  return dayIds.every((dayId) => {
+    const codes = resolveSerialDayCodes(work);
+    const hasIrregular = codes.includes("IRREGULAR");
+    if (dayId === "IRREGULAR" || dayId === "비정기 연재") {
+      return !codes.length || hasIrregular;
+    }
+    return codes.includes(dayId as WebtoonSerialDayCode);
+  });
+}
+
+const PLATFORM_CANONICAL: { match: RegExp; label: string }[] = [
+  { match: /^netflix/i, label: "Netflix" },
+  { match: /^(watcha|왓챠)$/i, label: "Watcha" },
+  { match: /^(tving|티빙)$/i, label: "TVING" },
+  { match: /^(wavve|웨이브)$/i, label: "wavve" },
+  { match: /disney/i, label: "Disney Plus" },
+  { match: /amazon|prime\s*video/i, label: "Amazon Prime Video" },
+  { match: /apple\s*tv/i, label: "Apple TV" },
+  { match: /coupang/i, label: "coupang play" },
+  { match: /google\s*play/i, label: "Google Play Movies" },
+  { match: /youtube|유튜브/i, label: "Youtube" },
+  { match: /laftel|라프텔/i, label: "라프텔" },
+  { match: /plex/i, label: "Plex" },
+  { match: /naver\s*webtoon|네이버\s*웹툰/i, label: "Naver Webtoon" },
+  { match: /naver\s*series|네이버\s*시리즈/i, label: "Naver Series" },
+  { match: /kakao\s*page|카카오페이지/i, label: "KakaoPage" },
+  { match: /kakao\s*webtoon|카카오\s*웹툰/i, label: "Kakao Webtoon" },
+  { match: /lezhin|레진/i, label: "Lezhin" },
+  { match: /bomtoon|봄툰/i, label: "Bomtoon" },
+  { match: /toomics|투믹스/i, label: "Toomics" },
+  { match: /toptoon|탑툰/i, label: "TOPTOON" },
+  { match: /ridi|리디/i, label: "Ridi" },
+];
+
+export function canonicalPlatformName(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return "";
+  for (const item of PLATFORM_CANONICAL) {
+    if (item.match.test(trimmed)) return item.label;
+  }
+  return trimmed;
+}
+
+export function workPlatformNames(work: Work): string[] {
+  const names = [
+    ...(work.platforms ?? []).map((item) => item.name),
+    ...(work.platform ?? []),
+  ]
+    .map(canonicalPlatformName)
+    .filter(Boolean);
+  return Array.from(new Set(names));
+}
+
+/** 타입별 플랫폼 목록 (빈도순) */
+export function platformsForType(type: WorkType) {
+  const counts = new Map<string, number>();
+  for (const work of worksByType(type)) {
+    for (const name of workPlatformNames(work)) {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"))
+    .map(([name]) => name);
+}
+
+/** 플랫폼 복수 선택: 선택된 플랫폼을 모두 포함 (AND) */
+export function matchesPlatformFilters(work: Work, platforms: string[]) {
+  if (!platforms.length) return true;
+  const names = workPlatformNames(work);
+  return platforms.every((platform) => names.includes(platform));
+}
